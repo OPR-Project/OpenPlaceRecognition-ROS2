@@ -1,0 +1,3 @@
+[submodule "dependencies/OpenPlaceRecognition"]
+	path = dependencies/OpenPlaceRecognition
+	url = https://github.com/OPR-Project/OpenPlaceRecognition.git
