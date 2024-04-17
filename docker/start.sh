@@ -43,14 +43,19 @@ PROJECT_ROOT_DIR=$(cd ./"`dirname $0`"/.. || exit; pwd)
 
 echo "Running on ${orange}${ARCH}${reset_color} with ${orange}${DEVICE}${reset_color}"
 
-docker run -it -d --rm \
-    $ARGS \
-    --privileged \
-    --name ${USER}_opr_ros2 \
-    --net host \
-    -v $PROJECT_ROOT_DIR:/home/docker_opr_ros2/ros2_ws:rw \
-    -v $DATASETS_DIR:/home/docker_opr_ros2/Datasets:rw \
-    open-place-recognition-ros2:devel
+xhost +
+    docker run -it -d --rm \
+        $ARGS \
+        --env="DISPLAY=$DISPLAY" \
+        --env="QT_X11_NO_MITSHM=1" \
+        --privileged \
+        --name ${USER}_opr_ros2 \
+        --net host \
+        -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+        -v $PROJECT_ROOT_DIR:/home/docker_opr_ros2/ros2_ws:rw \
+        -v $DATASETS_DIR:/home/docker_opr_ros2/Datasets:rw \
+        open-place-recognition-ros2:devel
+xhost -
 
 docker exec --user root \
     ${USER}_opr_ros2 bash -c "/etc/init.d/ssh start"
