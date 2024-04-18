@@ -7,8 +7,11 @@ from message_filters import ApproximateTimeSynchronizer, Subscriber
 from omegaconf import OmegaConf
 from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor
+from builtin_interfaces.msg import Time
+from geometry_msgs.msg import PoseStamped
 from sensor_msgs.msg import CompressedImage, PointCloud2
 from sensor_msgs_py.point_cloud2 import read_points
+from std_msgs.msg import Int32
 from torch import Tensor
 
 from opr.datasets.augmentations import DefaultImageTransform, DefaultSemanticTransform
@@ -48,6 +51,9 @@ class PlaceRecognitionNode(Node):
             [self.image_front_sub, self.image_back_sub, self.lidar_sub], queue_size=1, slop=0.05,
         )
         self.ts.registerCallback(self.listener_callback)
+
+        self.pose_pub = self.create_publisher(PoseStamped, "/place_recognition/pose", 10)
+        self.idx_pub = self.create_publisher(Int32, "/place_recognition/db_idx", 10)
 
         model_config = OmegaConf.load(model_cfg)
         model = instantiate(model_config)
@@ -140,16 +146,37 @@ class PlaceRecognitionNode(Node):
 
         return input_data
 
+    def _create_pose_msg(self, pose: np.ndarray, timestamp: Time) -> PoseStamped:
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = timestamp
+        pose_msg.pose.position.x = pose[0]
+        pose_msg.pose.position.y = pose[1]
+        pose_msg.pose.position.z = pose[2]
+        pose_msg.pose.orientation.x = pose[3]
+        pose_msg.pose.orientation.y = pose[4]
+        pose_msg.pose.orientation.z = pose[5]
+        pose_msg.pose.orientation.w = pose[6]
+        return pose_msg
+
     def listener_callback(
             self, front_image_msg: CompressedImage, back_image_msg: CompressedImage, lidar_msg: PointCloud2
         ) -> None:
+        self.get_logger().info("Received synchronized messages.")
+        t_start = self.get_clock().now()
+        lidar_timestamp = lidar_msg.header.stamp
         front_image = self.cv_bridge.compressed_imgmsg_to_cv2(front_image_msg)
         back_image = self.cv_bridge.compressed_imgmsg_to_cv2(back_image_msg)
         pointcloud = read_points(lidar_msg, field_names=("x", "y", "z"))
         pointcloud = np.array([pointcloud["x"], pointcloud["y"], pointcloud["z"]]).T
         input_data = self._prepare_input(images=[front_image, back_image], pointcloud=pointcloud)
         output = self.pr_pipe.infer(input_data)
-        self.get_logger().info(f"Place recognition output: {output.keys()}")
+        t_taken = self.get_clock().now() - t_start
+        self.get_logger().debug(f"Place recognition inference took: {t_taken.nanoseconds / 1e6} ms.")
+        pose_msg = self._create_pose_msg(output["pose"], lidar_timestamp)
+        self.pose_pub.publish(pose_msg)
+        self.get_logger().info(f"Published pose message: {pose_msg.pose}")
+        self.idx_pub.publish(Int32(data=int(output["idx"])))
+        self.get_logger().info(f"Published database index message: {int(output['idx'])}")
 
 
 def main(args=None):
