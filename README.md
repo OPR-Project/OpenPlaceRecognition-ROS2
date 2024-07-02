@@ -38,3 +38,27 @@ Run the following command inside the container:
 ```bash
 pip install -e ~/ros2_ws/dependencies/OpenPlaceRecognition
 ```
+
+# Running nodes
+
+## Build the workspace
+
+Inside `ros2_ws/` directory, run the following command:
+
+```bash
+colcon build --packages-select open_place_recognition
+```
+
+## Run the nodes
+
+Open the new terminal and run:
+
+```bash
+source ros2_ws/install/setup.bash
+```
+
+Run the place recognition node using launch file:
+
+```bash
+ros2 launch open_place_recognition place_recognition_launch.py
+```
