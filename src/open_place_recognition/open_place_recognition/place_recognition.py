@@ -14,6 +14,7 @@ from sensor_msgs_py.point_cloud2 import read_points
 from std_msgs.msg import Int32
 from torch import Tensor
 
+from opr_interfaces.msg import DatabaseMatchIndex
 from opr.datasets.augmentations import DefaultImageTransform, DefaultSemanticTransform
 from opr.pipelines.place_recognition import PlaceRecognitionPipeline
 
@@ -59,7 +60,7 @@ class PlaceRecognitionNode(Node):
         self.ts.registerCallback(self.listener_callback)
 
         self.pose_pub = self.create_publisher(PoseStamped, "/place_recognition/pose", 10)
-        self.idx_pub = self.create_publisher(Int32, "/place_recognition/db_idx", 10)
+        self.idx_pub = self.create_publisher(DatabaseMatchIndex, "/place_recognition/db_idx", 10)
 
         model_config = OmegaConf.load(model_cfg)
         model = instantiate(model_config)
@@ -174,6 +175,12 @@ class PlaceRecognitionNode(Node):
         pose_msg.pose.orientation.w = pose[6]
         return pose_msg
 
+    def _create_idx_msg(self, idx: int, timestamp: Time) -> DatabaseMatchIndex:
+        idx_msg = DatabaseMatchIndex()
+        idx_msg.header.stamp = timestamp
+        idx_msg.index = idx
+        return idx_msg
+
     def listener_callback(
             self,
             front_image_msg: CompressedImage,
@@ -198,10 +205,11 @@ class PlaceRecognitionNode(Node):
         t_taken = self.get_clock().now() - t_start
         self.get_logger().debug(f"Place recognition inference took: {t_taken.nanoseconds / 1e6} ms.")
         pose_msg = self._create_pose_msg(output["pose"], lidar_timestamp)
+        idx_msg = self._create_idx_msg(int(output["idx"]), lidar_timestamp)
         self.pose_pub.publish(pose_msg)
         self.get_logger().info(f"Published pose message: {pose_msg.pose}")
-        self.idx_pub.publish(Int32(data=int(output["idx"])))
-        self.get_logger().info(f"Published database index message: {int(output['idx'])}")
+        self.idx_pub.publish(idx_msg)
+        self.get_logger().info(f"Published database index message: {idx_msg.index}")
 
 
 def main(args=None):
