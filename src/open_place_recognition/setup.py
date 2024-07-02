@@ -23,7 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'place_recognition = open_place_recognition.place_recognition:main'
+            'place_recognition = open_place_recognition.place_recognition:main',
+            'visualizer = open_place_recognition.visualizer:main'
         ],
     },
 )
