@@ -46,7 +46,7 @@ pip install -e ~/ros2_ws/dependencies/OpenPlaceRecognition
 Inside `ros2_ws/` directory, run the following command:
 
 ```bash
-colcon build --packages-select open_place_recognition
+colcon build --packages-select open_place_recognition opr_interfaces
 ```
 
 ## Run the nodes
