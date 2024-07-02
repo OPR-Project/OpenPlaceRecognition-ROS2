@@ -9,7 +9,7 @@ from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor
 from builtin_interfaces.msg import Time
 from geometry_msgs.msg import PoseStamped
-from sensor_msgs.msg import CompressedImage, PointCloud2
+from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 from sensor_msgs_py.point_cloud2 import read_points
 from std_msgs.msg import Int32
 from torch import Tensor
@@ -34,6 +34,8 @@ class PlaceRecognitionNode(Node):
 
         image_front_topic = self.get_parameter("image_front_topic").get_parameter_value().string_value
         image_back_topic = self.get_parameter("image_back_topic").get_parameter_value().string_value
+        mask_front_topic = self.get_parameter("mask_front_topic").get_parameter_value().string_value
+        mask_back_topic = self.get_parameter("mask_back_topic").get_parameter_value().string_value
         lidar_topic = self.get_parameter("lidar_topic").get_parameter_value().string_value
         database_dir = self.get_parameter("database_dir").get_parameter_value().string_value
         model_cfg = self.get_parameter("model_cfg").get_parameter_value().string_value
@@ -45,10 +47,14 @@ class PlaceRecognitionNode(Node):
 
         self.image_front_sub = Subscriber(self, CompressedImage, image_front_topic)
         self.image_back_sub = Subscriber(self, CompressedImage, image_back_topic)
+        self.mask_front_sub = Subscriber(self, Image, mask_front_topic)
+        self.mask_back_sub = Subscriber(self, Image, mask_back_topic)
         self.lidar_sub = Subscriber(self, PointCloud2, lidar_topic)
 
         self.ts = ApproximateTimeSynchronizer(
-            [self.image_front_sub, self.image_back_sub, self.lidar_sub], queue_size=1, slop=0.05,
+            [self.image_front_sub, self.image_back_sub, self.mask_front_sub, self.mask_back_sub, self.lidar_sub],
+            queue_size=1,
+            slop=0.05,
         )
         self.ts.registerCallback(self.listener_callback)
 
@@ -81,6 +87,16 @@ class PlaceRecognitionNode(Node):
             "image_back_topic",
             rclpy.Parameter.Type.STRING, #"/realsense_back/color/image_raw/compressed",
             ParameterDescriptor(description="Back camera image topic.")
+        )
+        self.declare_parameter(
+            "mask_front_topic",
+            rclpy.Parameter.Type.STRING, #"/zed_node/left/semantic_segmentation",
+            ParameterDescriptor(description="Front semantic segmentation mask topic.")
+        )
+        self.declare_parameter(
+            "mask_back_topic",
+            rclpy.Parameter.Type.STRING, #"/realsense_back/semantic_segmentation",
+            ParameterDescriptor(description="Back semantic segmentation mask topic.")
         )
         self.declare_parameter(
             "lidar_topic",
@@ -159,16 +175,25 @@ class PlaceRecognitionNode(Node):
         return pose_msg
 
     def listener_callback(
-            self, front_image_msg: CompressedImage, back_image_msg: CompressedImage, lidar_msg: PointCloud2
+            self,
+            front_image_msg: CompressedImage,
+            back_image_msg: CompressedImage,
+            front_mask_msg: Image,
+            back_mask_msg: Image,
+            lidar_msg: PointCloud2,
         ) -> None:
         self.get_logger().info("Received synchronized messages.")
         t_start = self.get_clock().now()
         lidar_timestamp = lidar_msg.header.stamp
         front_image = self.cv_bridge.compressed_imgmsg_to_cv2(front_image_msg)
         back_image = self.cv_bridge.compressed_imgmsg_to_cv2(back_image_msg)
+        front_mask = self.cv_bridge.imgmsg_to_cv2(front_mask_msg)
+        back_mask = self.cv_bridge.imgmsg_to_cv2(back_mask_msg)
         pointcloud = read_points(lidar_msg, field_names=("x", "y", "z"))
         pointcloud = np.array([pointcloud["x"], pointcloud["y"], pointcloud["z"]]).T
-        input_data = self._prepare_input(images=[front_image, back_image], pointcloud=pointcloud)
+        input_data = self._prepare_input(
+            images=[front_image, back_image], masks=[front_mask, back_mask], pointcloud=pointcloud
+        )
         output = self.pr_pipe.infer(input_data)
         t_taken = self.get_clock().now() - t_start
         self.get_logger().debug(f"Place recognition inference took: {t_taken.nanoseconds / 1e6} ms.")

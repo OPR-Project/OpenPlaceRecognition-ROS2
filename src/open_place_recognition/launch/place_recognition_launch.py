@@ -12,8 +12,10 @@ def generate_launch_description():
             parameters=[
                 {"image_front_topic": "/zed_node/left/image_rect_color/compressed",
                  "image_back_topic": "/realsense_back/color/image_raw/compressed",
+                 "mask_front_topic": "/zed_node/left/semantic_segmentation",
+                 "mask_back_topic": "/realsense_back/semantic_segmentation",
                  "lidar_topic": "/velodyne_points",
-                 "database_dir": "/home/docker_opr_ros2/Datasets/sample_place_recognition_db_2023-02-10",
+                 "database_dir": "/home/docker_opr_ros2/Datasets/databases/indoor_floor_5",
                  "model_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multi-image_lidar_late-fusion.yaml",
                  "model_weights_path": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multi-image_lidar_late-fusion_nclt.pth",
                  "device": "cuda",
