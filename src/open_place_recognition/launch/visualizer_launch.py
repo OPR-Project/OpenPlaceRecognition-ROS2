@@ -10,7 +10,10 @@ def generate_launch_description():
             output='screen',
             emulate_tty=True,
             parameters=[
-                {"database_dir": "/home/docker_opr_ros2/Datasets/databases/indoor_floor_5",}
+                {
+                    # "database_dir": "/home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/indoor_floor_5",
+                    "database_dir": "/home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/outdoor_2023-04-11-day",
+                }
             ]
         )
     ])

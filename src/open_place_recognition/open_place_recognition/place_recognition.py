@@ -16,6 +16,13 @@ from torch import Tensor
 
 from opr_interfaces.msg import DatabaseMatchIndex
 from opr.datasets.augmentations import DefaultImageTransform, DefaultSemanticTransform
+from opr.datasets.projection import Projector
+from opr.datasets.soc_utils import (
+    get_points_labels_by_mask,
+    instance_masks_to_objects,
+    pack_objects,
+    semantic_mask_to_instances,
+)
 from opr.pipelines.place_recognition import PlaceRecognitionPipeline
 
 
@@ -64,6 +71,20 @@ class PlaceRecognitionNode(Node):
 
         model_config = OmegaConf.load(model_cfg)
         model = instantiate(model_config)
+
+        if model.soc_module is not None:
+            self.load_soc = True
+            self.get_logger().info(f"self.load_soc is set to True.")
+            sensors_cfg = OmegaConf.load("/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/sensors/husky.yaml")
+            anno_cfg = OmegaConf.load("/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/anno/oneformer.yaml")
+            self.front_cam_proj = Projector(sensors_cfg.front_cam, sensors_cfg.lidar)
+            self.back_cam_proj = Projector(sensors_cfg.back_cam, sensors_cfg.lidar)
+            self.max_distance_soc = 50.0
+            self.top_k_soc = model.soc_module.num_objects
+            self.special_classes = anno_cfg.special_classes
+            self.soc_coords_type = "euclidean"
+        else:
+            self.load_soc = False
 
         self.pr_pipe = PlaceRecognitionPipeline(
             database_dir=database_dir,
@@ -160,8 +181,82 @@ class PlaceRecognitionNode(Node):
                 input_data["pointcloud_lidar_feats"] = pointcloud[:, 3].unsqueeze(1)
             else:
                 input_data["pointcloud_lidar_feats"] = torch.ones_like(pointcloud[:, :1])
-
+        if self.load_soc:
+            input_data["soc"] = self._get_soc(mask_front=masks[0], mask_back=masks[1], lidar_scan=pointcloud)
         return input_data
+
+    def _get_soc(self, mask_front: np.ndarray, mask_back: np.ndarray, lidar_scan: np.ndarray) -> Tensor:
+        coords_front, _, in_image_front = self.front_cam_proj(lidar_scan)
+        coords_back, _, in_image_back = self.back_cam_proj(lidar_scan)
+
+        point_labels = np.zeros(len(lidar_scan), dtype=np.uint8)
+        point_labels[in_image_front] = get_points_labels_by_mask(coords_front, mask_front)
+        point_labels[in_image_back] = get_points_labels_by_mask(coords_back, mask_back)
+
+        instances_front = semantic_mask_to_instances(
+            mask_front,
+            area_threshold=10,
+            labels_whitelist=self.special_classes,
+        )
+        instances_back = semantic_mask_to_instances(
+            mask_back,
+            area_threshold=10,
+            labels_whitelist=self.special_classes,
+        )
+
+        objects_front = instance_masks_to_objects(
+            instances_front,
+            coords_front,
+            point_labels[in_image_front],
+            lidar_scan[in_image_front],
+        )
+        objects_back = instance_masks_to_objects(
+            instances_back,
+            coords_back,
+            point_labels[in_image_back],
+            lidar_scan[in_image_back],
+        )
+
+        objects = {**objects_front, **objects_back}
+        packed_objects = pack_objects(objects, self.top_k_soc, self.max_distance_soc, self.special_classes)
+
+        if self.soc_coords_type == "cylindrical_3d":
+            packed_objects = np.concatenate(
+                (
+                    np.linalg.norm(packed_objects, axis=-1, keepdims=True),
+                    np.arctan2(packed_objects[..., 1], packed_objects[..., 0])[..., None],
+                    packed_objects[..., 2:],
+                ),
+                axis=-1,
+            )
+        elif self.soc_coords_type == "cylindrical_2d":
+            packed_objects = np.concatenate(
+                (
+                    np.linalg.norm(packed_objects[..., :2], axis=-1, keepdims=True),
+                    np.arctan2(packed_objects[..., 1], packed_objects[..., 0])[..., None],
+                    packed_objects[..., 2:],
+                ),
+                axis=-1,
+            )
+        elif self.soc_coords_type == "euclidean":
+            pass
+        elif self.soc_coords_type == "spherical":
+            packed_objects = np.concatenate(
+                (
+                    np.linalg.norm(packed_objects, axis=-1, keepdims=True),
+                    np.arccos(
+                        packed_objects[..., 2] / np.linalg.norm(packed_objects, axis=-1, keepdims=True)
+                    ),
+                    np.arctan2(packed_objects[..., 1], packed_objects[..., 0])[..., None],
+                ),
+                axis=-1,
+            )
+        else:
+            raise ValueError(f"Unknown soc_coords_type: {self.soc_coords_type!r}")
+
+        objects_tensor = torch.from_numpy(packed_objects).float()
+
+        return objects_tensor
 
     def _create_pose_msg(self, pose: np.ndarray, timestamp: Time) -> PoseStamped:
         pose_msg = PoseStamped()
