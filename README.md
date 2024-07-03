@@ -62,3 +62,9 @@ Run the place recognition node using launch file:
 ```bash
 ros2 launch open_place_recognition place_recognition_launch.py
 ```
+
+Run the visualizer node using launch file:
+
+```bash
+ros2 launch open_place_recognition visualizer_launch.py
+```
