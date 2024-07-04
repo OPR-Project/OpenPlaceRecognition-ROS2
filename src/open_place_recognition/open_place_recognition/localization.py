@@ -13,7 +13,10 @@ from sensor_msgs.msg import Image, CompressedImage, PointCloud2
 from sensor_msgs_py.point_cloud2 import read_points
 from std_msgs.msg import Int32
 from torch import Tensor
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
+from opr.pipelines.localization import ArucoLocalizationPipeline
 from opr_interfaces.msg import DatabaseMatchIndex
 from opr.datasets.augmentations import DefaultImageTransform, DefaultSemanticTransform
 from opr.datasets.projection import Projector
@@ -31,6 +34,19 @@ MODEL_CFG = "/path/to/model/config.yaml"
 MODEL_WEIGHTS_PATH = "/path/to/model/weights.pth"
 DEVICE = "cuda"
 IMAGE_RESIZE = (320, 192)
+
+
+class ImageTransformWithoutNormalize:
+    def __call__(self, img: np.ndarray):
+        """Applies transformations to the given image.
+
+        Args:
+            img (np.ndarray): The image in the cv2 format.
+
+        Returns:
+            Tensor: Augmented PyTorch tensor in the channel-first format.
+        """
+        return A.Compose([ToTensorV2()])(image=img)["image"]
 
 
 class LocalizationNode(Node):
@@ -82,8 +98,12 @@ class LocalizationNode(Node):
         else:
             self.load_soc = False
 
-        self.image_transform = DefaultImageTransform(train=False, resize=image_resize)
-        self.mask_transform = DefaultSemanticTransform(train=False, resize=image_resize)
+        if isinstance(self.pipeline, ArucoLocalizationPipeline):
+            self.image_transform = ImageTransformWithoutNormalize()
+            self.mask_transform = DefaultSemanticTransform(train=False, resize=None)
+        else:
+            self.image_transform = DefaultImageTransform(train=False, resize=image_resize)
+            self.mask_transform = DefaultSemanticTransform(train=False, resize=image_resize)
 
         self.get_logger().info(f"Initialized {self.__class__.__name__} node.")
 
