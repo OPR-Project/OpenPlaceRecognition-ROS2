@@ -1,0 +1,93 @@
+_target_: opr.pipelines.localization.LocalizationPipeline
+
+place_recognition_pipeline:
+  _target_: opr.pipelines.place_recognition.PlaceRecognitionPipeline
+  model:
+    _target_: opr.models.place_recognition.base.LateFusionModel
+    image_module:
+      _target_: opr.models.place_recognition.base.ImageModel
+      backbone:
+        _target_: opr.modules.feature_extractors.ResNet18FPNFeatureExtractor
+        in_channels: 3
+        lateral_dim: 256
+        fh_num_bottom_up: 4
+        fh_num_top_down: 0
+        pretrained: True
+      head:
+        _target_: opr.modules.GeM
+      fusion:
+        _target_: opr.modules.Add
+    cloud_module:
+      _target_: opr.models.place_recognition.MinkLoc3Dv2
+      in_channels: 1
+      out_channels: 256
+      num_top_down: 2
+      conv0_kernel_size: 5
+      block: ECABasicBlock
+      layers: [1, 1, 1, 1]
+      planes: [64, 128, 64, 32]
+      pooling: gem
+    fusion_module:
+      _target_: opr.modules.Concat
+  database_dir: /home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/indoor_floor_5
+  model_weights_path: /home/docker_opr_ros2/ros2_ws/src/open_place_recognition/weights/multi-image_lidar_late-fusion_nclt.pth
+  device: cuda
+  pointcloud_quantization_size: 0.5
+
+registration_pipeline:
+  _target_: opr.pipelines.registration.SequencePointcloudRegistrationPipeline
+  model:
+    _target_: opr.models.registration.geotransformer.GeoTransformer
+    model:
+      ground_truth_matching_radius: 0.6
+      num_points_in_patch: 128
+      num_sinkhorn_iterations: 100
+    backbone:
+      num_stages: 5
+      init_voxel_size: 0.3
+      kernel_size: 15
+      base_radius: 4.25
+      base_sigma: 2.0
+      group_norm: 32
+      input_dim: 1
+      init_dim: 64
+      output_dim: 256
+    geotransformer:
+      input_dim: 2048
+      hidden_dim: 128
+      output_dim: 256
+      num_heads: 4
+      blocks: [self, cross, self, cross, self, cross]
+      sigma_d: 4.8
+      sigma_a: 15
+      angle_k: 3
+      reduction_a: max
+    coarse_matching:
+      num_targets: 128
+      overlap_threshold: 0.1
+      num_correspondences: 256
+      dual_normalization: True
+    fine_matching:
+      topk: 2
+      acceptance_radius: 0.6
+      mutual: True
+      confidence_threshold: 0.05
+      use_dustbin: False
+      use_global_score: False
+      correspondence_threshold: 3
+      correspondence_limit: null
+      num_refinement_steps: 5
+  model_weights_path: /home/docker_opr_ros2/ros2_ws/src/open_place_recognition/weights/geotransformer_kitti.pth
+  device: cuda
+  voxel_downsample_size: 0.5
+
+db_dataset:
+  _target_: opr.datasets.itlp.ITLPCampus
+  dataset_root: /home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/indoor_floor_5
+  subset: test
+  csv_file: track.csv
+  sensors: ["lidar"]
+  load_semantics: False
+  load_soc: False
+  indoor: True
+  test_split: [1,2,3,4,5] # floors
