@@ -17,6 +17,8 @@ def generate_launch_description():
                     "mask_back_topic": "/realsense_back/semantic_segmentation",
                     "lidar_topic": "/velodyne_points",
                     "pipeline_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/pipelines/localization_pipeline.yaml",
+                    # "pipeline_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/pipelines/aruco_localization_pipeline.yaml",
+                    "exclude_dynamic_classes": False,
                     "image_resize": [320, 192]}
             ]
         )

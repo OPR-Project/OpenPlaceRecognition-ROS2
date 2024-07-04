@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import rclpy
 import torch
@@ -61,6 +62,7 @@ class LocalizationNode(Node):
         mask_back_topic = self.get_parameter("mask_back_topic").get_parameter_value().string_value
         lidar_topic = self.get_parameter("lidar_topic").get_parameter_value().string_value
         pipeline_cfg = self.get_parameter("pipeline_cfg").get_parameter_value().string_value
+        exclude_dynamic_classes = self.get_parameter("exclude_dynamic_classes").get_parameter_value().bool_value
         image_resize = self.get_parameter("image_resize").get_parameter_value().integer_array_value
 
         self.cv_bridge = CvBridge()
@@ -105,6 +107,22 @@ class LocalizationNode(Node):
             self.image_transform = DefaultImageTransform(train=False, resize=image_resize)
             self.mask_transform = DefaultSemanticTransform(train=False, resize=image_resize)
 
+        self._ade20k_dynamic_idx = [12]
+        self.exclude_dynamic_classes = exclude_dynamic_classes
+
+        self.lidar2front = np.array([[ 0.01509615, -0.99976457, -0.01558544,  0.04632156],
+                                    [ 0.00871086,  0.01571812, -0.99983852, -0.13278588],
+                                    [ 0.9998481,   0.01495794,  0.0089461,  -0.06092749],
+                                    [ 0.      ,    0.  ,        0.    ,      1.        ]])
+        self.lidar2back = np.array([[-1.50409674e-02,  9.99886421e-01,  9.55906151e-04,  1.82703304e-02],
+                                    [-1.30440106e-02,  7.59716299e-04, -9.99914635e-01, -1.41787545e-01],
+                                    [-9.99801792e-01, -1.50521522e-02,  1.30311022e-02, -6.72336358e-02],
+                                    [ 0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])
+        self.front_matrix = np.array([[683.6199340820312, 0.0, 615.1160278320312, 0.0, 683.6199340820312, 345.32354736328125, 0.0, 0.0, 1.0]]).reshape((3,3))
+        self.front_dist = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+        self.back_matrix = np.array([[910.4178466796875, 0.0, 648.44140625, 0.0, 910.4166870117188, 354.0118408203125, 0.0, 0.0, 1.0]]).reshape((3,3))
+        self.back_dist = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+
         self.get_logger().info(f"Initialized {self.__class__.__name__} node.")
 
     def _declare_parameters(self) -> None:
@@ -139,6 +157,11 @@ class LocalizationNode(Node):
             ParameterDescriptor(description="Path to the pipeline configuration file.")
         )
         self.declare_parameter(
+            "exclude_dynamic_classes",
+            rclpy.Parameter.Type.BOOL,
+            ParameterDescriptor(description="Exclude dynamic objects from the input data.")
+        )
+        self.declare_parameter(
             "image_resize",
             rclpy.Parameter.Type.INTEGER_ARRAY, #(320, 192),
             ParameterDescriptor(description="Image resize dimensions.")
@@ -154,9 +177,17 @@ class LocalizationNode(Node):
         if images is not None:
             if isinstance(images, list):
                 for i, image in enumerate(images):
-                    input_data[f"image_{i}"] = self.image_transform(image)
+                    input_data[f"image_{i}"] = image
+                    if self.exclude_dynamic_classes and masks is not None:
+                        for index in self._ade20k_dynamic_idx:
+                            input_data[f"image_{i}"] = np.where(masks[i][:, :, np.newaxis] == index, 0, input_data[f"image_{i}"])
+                    input_data[f"image_{i}"] = self.image_transform(input_data[f"image_{i}"])
             elif isinstance(images, np.ndarray):
-                input_data["image_0"] = self.image_transform(images)
+                input_data["image_0"] = images
+                if self.exclude_dynamic_classes and masks is not None:
+                    for index in self._ade20k_dynamic_idx:
+                        input_data["image_0"] = np.where(masks == index, 0, input_data["image_0"])
+                input_data["image_0"] = self.image_transform(input_data["image_0"])
             else:
                 self.get_logger().warning(f"Invalid type for images in '_prepare_input': {type(images)}")
         if masks is not None:
@@ -168,6 +199,12 @@ class LocalizationNode(Node):
             else:
                 self.get_logger().warning(f"Invalid type for masks in '_prepare_input': {type(masks)}")
         if pointcloud is not None:
+            if self.exclude_dynamic_classes and masks is not None:
+                if isinstance(masks, list):
+                    for i, mask in enumerate(masks):
+                        pointcloud = self._remove_dynamic_points(pointcloud, mask, self.lidar2back, self.back_matrix, self.back_dist)
+                elif isinstance(masks, np.ndarray):
+                    pointcloud = self._remove_dynamic_points(pointcloud, masks, self.lidar2back, self.back_matrix, self.back_dist)
             pointcloud = torch.tensor(pointcloud).contiguous()
             input_data["pointcloud_lidar_coords"] = pointcloud[:, :3]
             if pointcloud.shape[1] > 3:
@@ -250,6 +287,42 @@ class LocalizationNode(Node):
         objects_tensor = torch.from_numpy(packed_objects).float()
 
         return objects_tensor
+
+    def _remove_dynamic_points(self, pointcloud: np.ndarray, semantic_map: np.ndarray, lidar2sensor: np.ndarray,
+                               sensor_intrinsics: np.ndarray, sensor_dist: np.ndarray) -> np.ndarray:
+        pc_values = np.concatenate([pointcloud, np.ones((pointcloud.shape[0], 1))],axis=1).T
+        camera_values = lidar2sensor @ pc_values
+        camera_values = np.transpose(camera_values)[:, :3]
+
+        points_2d, _ = cv2.projectPoints(camera_values,
+                                         np.zeros((3, 1), np.float32), np.zeros((3, 1), np.float32),
+                                         sensor_intrinsics,
+                                         sensor_dist)
+        points_2d = points_2d[:, 0, :]
+
+        classes = set(np.unique(semantic_map))
+        dynamic_classes = set(self._ade20k_dynamic_idx)
+        if classes.intersection(dynamic_classes):
+            valid = (~np.isnan(points_2d[:,0])) & (~np.isnan(points_2d[:,1]))
+            in_bounds_x = (points_2d[:,0] >= 0) & (points_2d[:,0] < 1280)
+            in_bounds_y = (points_2d[:,1] >= 0) & (points_2d[:,1] < 720)
+            look_forward = (camera_values[:, 2] > 0)
+            mask = valid & in_bounds_x & in_bounds_y & look_forward
+
+            indices = np.where(mask)[0]
+            mask_for_points = np.full((points_2d.shape[0], 3), True)
+
+            dynamic_idx = np.array(self._ade20k_dynamic_idx)
+            semantic_values = semantic_map[np.floor(points_2d[indices, 1]).astype(int), np.floor(points_2d[indices, 0]).astype(int)]
+
+            matching_indices = np.where(np.isin(semantic_values, dynamic_idx))
+
+            mask_for_points = np.full((points_2d.shape[0], 3), True)
+            mask_for_points[indices[matching_indices[0]]] = np.array([False, False, False])
+
+            return pointcloud[mask_for_points].reshape((-1, 3))
+        else:
+            return pointcloud
 
     def _create_pose_msg(self, pose: np.ndarray, timestamp: Time) -> PoseStamped:
         pose_msg = PoseStamped()
