@@ -26,6 +26,7 @@ setup(
             'place_recognition = open_place_recognition.place_recognition:main',
             'visualizer = open_place_recognition.visualizer:main',
             'localization = open_place_recognition.localization:main',
+            'depth_estimation = open_place_recognition.depth_estimation:main'
         ],
     },
 )
