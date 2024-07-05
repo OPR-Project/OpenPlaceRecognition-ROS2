@@ -15,19 +15,10 @@ def generate_launch_description():
                  "mask_front_topic": "/zed_node/left/semantic_segmentation",
                  "mask_back_topic": "/realsense_back/semantic_segmentation",
                  "lidar_topic": "/velodyne_points",
-                #  "database_dir": "/home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/indoor_floor_5",
-                 "database_dir": "/home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/outdoor_2023-04-11-day",
-
-                #  "model_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multi-image_lidar_late-fusion.yaml",
-                #  "model_weights_path": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multi-image_lidar_late-fusion_nclt.pth",
-
-                #  "model_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multi-image_multi-semantic_lidar_late-fusion.yaml",
-                #  "model_weights_path": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multi-image_multi-semantic_lidar_late-fusion_nclt.pth",
-
-                 "model_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multimodal_with_soc_outdoor.yaml",
-                 "model_weights_path": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/multimodal_with_soc_outdoor_nclt.pth",
-
-                 "device": "cuda",
+                 "pipeline_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/pipelines/place_recognition/multimodal_pr.yaml",
+                #  "pipeline_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/pipelines/place_recognition/multimodal_semantic_pr.yaml",
+                #  "pipeline_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/pipelines/place_recognition/multimodal_with_soc_outdoor_pr.yaml",
+                #  "pipeline_cfg": "/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/pipelines/place_recognition/multimodal_semantic_with_soc_outdoor_pr.yaml",
                  "image_resize": [320, 192]}
             ]
         )

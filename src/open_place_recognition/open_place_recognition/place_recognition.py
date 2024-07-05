@@ -45,10 +45,7 @@ class PlaceRecognitionNode(Node):
         mask_front_topic = self.get_parameter("mask_front_topic").get_parameter_value().string_value
         mask_back_topic = self.get_parameter("mask_back_topic").get_parameter_value().string_value
         lidar_topic = self.get_parameter("lidar_topic").get_parameter_value().string_value
-        database_dir = self.get_parameter("database_dir").get_parameter_value().string_value
-        model_cfg = self.get_parameter("model_cfg").get_parameter_value().string_value
-        model_weights_path = self.get_parameter("model_weights_path").get_parameter_value().string_value
-        device = self.get_parameter("device").get_parameter_value().string_value
+        pipeline_cfg = self.get_parameter("pipeline_cfg").get_parameter_value().string_value
         image_resize = self.get_parameter("image_resize").get_parameter_value().integer_array_value
 
         self.cv_bridge = CvBridge()
@@ -69,10 +66,10 @@ class PlaceRecognitionNode(Node):
         self.pose_pub = self.create_publisher(PoseStamped, "/place_recognition/pose", 10)
         self.idx_pub = self.create_publisher(DatabaseMatchIndex, "/place_recognition/db_idx", 10)
 
-        model_config = OmegaConf.load(model_cfg)
-        model = instantiate(model_config)
+        pipeline_config = OmegaConf.load(pipeline_cfg)
+        self.pr_pipe = instantiate(pipeline_config)
 
-        if model.soc_module is not None:
+        if self.pr_pipe.model.soc_module is not None:
             self.load_soc = True
             self.get_logger().info(f"self.load_soc is set to True.")
             sensors_cfg = OmegaConf.load("/home/docker_opr_ros2/ros2_ws/src/open_place_recognition/configs/sensors/husky.yaml")
@@ -80,19 +77,11 @@ class PlaceRecognitionNode(Node):
             self.front_cam_proj = Projector(sensors_cfg.front_cam, sensors_cfg.lidar)
             self.back_cam_proj = Projector(sensors_cfg.back_cam, sensors_cfg.lidar)
             self.max_distance_soc = 50.0
-            self.top_k_soc = model.soc_module.num_objects
+            self.top_k_soc = self.pr_pipe.model.soc_module.num_objects
             self.special_classes = anno_cfg.special_classes
             self.soc_coords_type = "euclidean"
         else:
             self.load_soc = False
-
-        self.pr_pipe = PlaceRecognitionPipeline(
-            database_dir=database_dir,
-            model=model,
-            model_weights_path=model_weights_path,
-            device=device,
-            pointcloud_quantization_size=0.5,
-        )
 
         self.image_transform = DefaultImageTransform(train=False, resize=image_resize)
         self.mask_transform = DefaultSemanticTransform(train=False, resize=image_resize)
@@ -126,24 +115,9 @@ class PlaceRecognitionNode(Node):
             ParameterDescriptor(description="Lidar pointcloud topic.")
         )
         self.declare_parameter(
-            "database_dir",
+            "pipeline_cfg",
             rclpy.Parameter.Type.STRING, #"",
-            ParameterDescriptor(description="Path to the database directory with faiss index.")
-        )
-        self.declare_parameter(
-            "model_cfg",
-            rclpy.Parameter.Type.STRING, #"",
-            ParameterDescriptor(description="Path to the model configuration file.")
-        )
-        self.declare_parameter(
-            "model_weights_path",
-            rclpy.Parameter.Type.STRING, #"",
-            ParameterDescriptor(description="Path to the model weights.")
-        )
-        self.declare_parameter(
-            "device",
-            rclpy.Parameter.Type.STRING, #"cuda",
-            ParameterDescriptor(description="Device to use for inference.")
+            ParameterDescriptor(description="Path to the pipeline configuration file.")
         )
         self.declare_parameter(
             "image_resize",
