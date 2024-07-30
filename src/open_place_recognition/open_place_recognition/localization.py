@@ -206,6 +206,7 @@ class LocalizationNode(Node):
                 elif isinstance(masks, np.ndarray):
                     pointcloud = self._remove_dynamic_points(pointcloud, masks, self.lidar2back, self.back_matrix, self.back_dist)
             pointcloud = torch.tensor(pointcloud).contiguous()
+            pointcloud = pointcloud[~torch.any(pointcloud.isnan(), dim=1)]
             input_data["pointcloud_lidar_coords"] = pointcloud[:, :3]
             if pointcloud.shape[1] > 3:
                 input_data["pointcloud_lidar_feats"] = pointcloud[:, 3].unsqueeze(1)
