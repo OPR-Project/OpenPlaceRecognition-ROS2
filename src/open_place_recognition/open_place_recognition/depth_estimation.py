@@ -14,9 +14,14 @@ from rcl_interfaces.msg import ParameterDescriptor
 
 import sys
 sys.path.append('/home/docker_opr_ros2/ros2_ws/dependencies/OpenPlaceRecognition/third_party/AdelaiDepth/LeReS/Minist_Test')
+
 from lib.multi_depth_model_woauxi import RelDepthModel
 from lib.net_tools import load_ckpt
 import argparse
+import time
+
+sys.path.append('/home/docker_opr_ros2/ros2_ws/dependencies/OpenPlaceRecognition/third_party/Depth-Anything-V2')
+from metric_depth.depth_anything_v2.dpt import DepthAnythingV2 as DepthAnythingV2Metric
 
 from opr.pipelines.depth_estimation import DepthEstimationPipeline
 
@@ -38,11 +43,18 @@ class DepthEstimationNode(Node):
         camera_info_topic = self.get_parameter("camera_info_front_topic").get_parameter_value().string_value
         lidar_topic = self.get_parameter("lidar_topic").get_parameter_value().string_value
         model_weights_path = self.get_parameter("model_weights_path").get_parameter_value().string_value
+        model_type = self.get_parameter("model_type").get_parameter_value().string_value
+        align_type = self.get_parameter("align_type").get_parameter_value().string_value
+        mode = self.get_parameter("mode").get_parameter_value().string_value
         device = self.get_parameter("device").get_parameter_value().string_value
         image_resize = self.get_parameter("image_resize").get_parameter_value().integer_array_value
+
         self.publish_point_cloud_from_depth = True#self.get_parameter("publish_point_cloud_from_depth").get_parameter_value().bool_value
 
+
         self.cv_bridge = CvBridge()
+        self.rmses = []
+        self.rels = []
 
         self.image_front_sub = Subscriber(self, CompressedImage, image_front_topic)
         self.camera_info_sub = Subscriber(self, CameraInfo, camera_info_topic)
@@ -51,7 +63,7 @@ class DepthEstimationNode(Node):
 
         self.ts = ApproximateTimeSynchronizer(
             [self.image_front_sub, self.lidar_sub, self.camera_info_sub],
-            queue_size=1,
+            queue_size=3,
             slop=0.05,
         )
         self.ts.registerCallback(self.listener_callback)
@@ -63,9 +75,25 @@ class DepthEstimationNode(Node):
         arguments = "--load_ckpt {} \
                     --backbone resnet50".format(model_weights_path).split()
         args = parse_args(arguments)
-        rel_depth_model = RelDepthModel(backbone='resnet50').cuda()
-        load_ckpt(args, rel_depth_model, None, None)
-        self.pipeline = DepthEstimationPipeline(rel_depth_model)
+        if model_type == 'AdelaiDepth':
+            model = RelDepthModel(backbone='resnet50').cuda()
+            load_ckpt(args, model, None, None)
+        else:
+            model_configs = {
+                    'small': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+                    'base': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
+                    'large': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]}
+                }
+            type = 'small'
+            params = model_configs[type]
+            model = DepthAnythingV2Metric(**params, max_depth=20.0)
+            model.load_state_dict(torch.load(model_weights_path))
+            model.to(device)
+        self.pipeline = DepthEstimationPipeline(model,
+                                                model_type=model_type,
+                                                align_type=align_type,
+                                                mode=mode,
+                                                device=device)
 
 
     def _declare_parameters(self) -> None:
@@ -93,6 +121,21 @@ class DepthEstimationNode(Node):
             "model_weights_path",
             rclpy.Parameter.Type.STRING, #"",
             ParameterDescriptor(description="Path to the model weights.")
+        )
+        self.declare_parameter(
+            "model_type",
+            rclpy.Parameter.Type.STRING, #"",
+            ParameterDescriptor(description="Type of the model: AdelaiDepth (old) or DepthAnything (new).")
+        )
+        self.declare_parameter(
+            "align_type",
+            rclpy.Parameter.Type.STRING, #"",
+            ParameterDescriptor(description="Type of estimation of scale coefficient: 'average' or 'regression'.")
+        )
+        self.declare_parameter(
+            "mode",
+            rclpy.Parameter.Type.STRING, #"",
+            ParameterDescriptor(description="Depth estimation mode: indoor or outdoor.")
         )
         self.declare_parameter(
             "device",
@@ -133,6 +176,8 @@ class DepthEstimationNode(Node):
             camera_info_msg: CameraInfo
         ) -> None:
         print('Start getting transform')
+        start_time = time.time()
+        callback_start_time = time.time()
         try:
             transform_msg = self.tf_buffer.lookup_transform(lidar_msg.header.frame_id, front_image_msg.header.frame_id, 0)
         except:
@@ -153,9 +198,18 @@ class DepthEstimationNode(Node):
         image = self.cv_bridge.compressed_imgmsg_to_cv2(front_image_msg)
         pointcloud = read_points(lidar_msg, field_names=("x", "y", "z"))
         pointcloud = np.array([pointcloud["x"], pointcloud["y"], pointcloud["z"]]).T
-        depth = self.pipeline.get_depth_with_lidar(image, pointcloud)
+        print('Data processing time:', time.time() - start_time)
+        start_time = time.time()
+        depth, rmse, rel = self.pipeline.get_depth_with_lidar(image, pointcloud)
+        end_time = time.time()
+        print('Full processing time:', end_time - start_time)
+        self.rmses.append(rmse)
+        self.rels.append(rel)
         print(depth.min(), depth.max())
+        print('RMSE:', rmse)
+        print('Rel error:', rel)
 
+        start_time = time.time()
         image_raw = self.cv_bridge.cv2_to_imgmsg(image)
         image_raw.header = front_image_msg.header
         self.image_raw_pub.publish(image_raw)
@@ -165,11 +219,17 @@ class DepthEstimationNode(Node):
         depth_msg.header.stamp = front_image_msg.header.stamp
         depth_msg.header.frame_id = front_image_msg.header.frame_id
         self.depth_pub.publish(depth_msg)
+        print('Depth publishing time:', time.time() - start_time)
 
         if self.publish_point_cloud_from_depth:
+            start_time = time.time()
             point_cloud_from_depth = self.get_point_cloud_from_depth(depth, camera_matrix)
             point_cloud_msg = create_cloud_xyz32(front_image_msg.header, point_cloud_from_depth)
             self.cloud_pub.publish(point_cloud_msg)
+            end_time = time.time()
+            print('Point cloud publishing time:', end_time - start_time)
+        print('Total callback time:', time.time() - callback_start_time)
+        print()
 
 
 def main(args=None):
