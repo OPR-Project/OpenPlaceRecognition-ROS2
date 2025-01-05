@@ -1,0 +1,68 @@
+_target_: opr.pipelines.localization.LocalizationPipeline
+
+place_recognition_pipeline:
+  _target_: opr.pipelines.place_recognition.PlaceRecognitionPipeline
+  model:
+    _target_: opr.models.place_recognition.base.LateFusionModel
+    image_module:
+      _target_: opr.models.place_recognition.base.ImageModel
+      backbone:
+        _target_: opr.modules.feature_extractors.ResNet18FPNFeatureExtractor
+        in_channels: 3
+        lateral_dim: 256
+        fh_num_bottom_up: 4
+        fh_num_top_down: 0
+        pretrained: True
+      head:
+        _target_: opr.modules.GeM
+      fusion:
+        _target_: opr.modules.Add
+    semantic_module:
+      _target_: opr.models.place_recognition.base.SemanticModel
+      backbone:
+        _target_: opr.modules.feature_extractors.ResNet18FPNFeatureExtractor
+        in_channels: 1
+        lateral_dim: 256
+        fh_num_bottom_up: 4
+        fh_num_top_down: 0
+        pretrained: False
+      head:
+        _target_: opr.modules.GeM
+      fusion:
+        _target_: opr.modules.Add
+    cloud_module:
+      _target_: opr.models.place_recognition.MinkLoc3Dv2
+      in_channels: 1
+      out_channels: 256
+      num_top_down: 2
+      conv0_kernel_size: 5
+      block: ECABasicBlock
+      layers: [1, 1, 1, 1]
+      planes: [64, 128, 64, 32]
+      pooling: gem
+    fusion_module:
+      _target_: opr.modules.Concat
+  database_dir: /home/docker_opr_ros2/Datasets/OpenPlaceRecognition/itlp_campus_outdoor_part2/05_2023-08-15-day
+  model_weights_path: /home/docker_opr_ros2/ros2_ws/src/open_place_recognition/weights/multi-image_multi-semantic_lidar_late-fusion_itlp-finetune.pth
+  device: cuda
+  pointcloud_quantization_size: 0.5
+
+registration_pipeline:
+  _target_: opr.pipelines.registration.PointcloudRegistrationPipeline
+  model:
+    _target_: opr.models.registration.hregnet.HRegNet
+    num_reg_steps: 1
+    use_sim: False
+    use_neighbor: False
+    use_fps: True
+    use_weights: True
+    light_feats: True
+    freeze_detector: False
+    freeze_feats: False
+  model_weights_path: /home/docker_opr_ros2/ros2_ws/src/open_place_recognition/weights/hregnet_light_feats_nuscenes.pth
+  device: cuda
+  voxel_downsample_size: 0.3
+  num_points_downsample: 8192
+
+precomputed_reg_feats: True
+pointclouds_subdir: lidar

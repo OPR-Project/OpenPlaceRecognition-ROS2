@@ -1,0 +1,73 @@
+_target_: opr.pipelines.localization.ArucoLocalizationPipeline
+
+place_recognition_pipeline:
+  _target_: opr.pipelines.place_recognition.PlaceRecognitionPipeline
+  model:
+    _target_: opr.models.place_recognition.base.LateFusionModel
+    image_module:
+      _target_: opr.models.place_recognition.base.ImageModel
+      backbone:
+        _target_: opr.modules.feature_extractors.ResNet18FPNFeatureExtractor
+        in_channels: 3
+        lateral_dim: 256
+        fh_num_bottom_up: 4
+        fh_num_top_down: 0
+        pretrained: True
+      head:
+        _target_: opr.modules.GeM
+      fusion:
+        _target_: opr.modules.Add
+    cloud_module:
+      _target_: opr.models.place_recognition.MinkLoc3Dv2
+      in_channels: 1
+      out_channels: 256
+      num_top_down: 2
+      conv0_kernel_size: 5
+      block: ECABasicBlock
+      layers: [1, 1, 1, 1]
+      planes: [64, 128, 64, 32]
+      pooling: gem
+    fusion_module:
+      _target_: opr.modules.Concat
+  database_dir: /home/docker_opr_ros2/Datasets/OpenPlaceRecognition/itlp_campus_outdoor_part2/05_2023-08-15-day
+  model_weights_path: /home/docker_opr_ros2/ros2_ws/src/open_place_recognition/weights/multi-image_lidar_late-fusion_itlp-finetune.pth
+  device: cuda
+  pointcloud_quantization_size: 0.5
+
+registration_pipeline:
+  _target_: opr.pipelines.registration.PointcloudRegistrationPipeline
+  model:
+    _target_: opr.models.registration.hregnet.HRegNet
+    num_reg_steps: 1
+    use_sim: False
+    use_neighbor: False
+    use_fps: True
+    use_weights: True
+    light_feats: True
+    freeze_detector: False
+    freeze_feats: False
+  model_weights_path: /home/docker_opr_ros2/ros2_ws/src/open_place_recognition/weights/hregnet_light_feats_nuscenes.pth
+  device: cuda
+  voxel_downsample_size: 0.3
+  num_points_downsample: 8192
+
+precomputed_reg_feats: True
+pointclouds_subdir: lidar
+
+aruco_metadata:
+  aruco_type: 2  # cv2.aruco.DICT_4X4_250
+  aruco_size: 0.2
+  aruco_gt_pose_by_id:
+    11: [-1.82410266, -0.08805033, 1.0027102, 0.52255674, 0.54868202, 0.46970398, 0.45305703]
+    12: [-1.89103056, -0.16381068, 100.68857262, 0.5104185, 0.48182796, 0.47396991, 0.53166464]
+    13: [-1.65826485, -0.23034471, 200.85429952, 0.53442465, 0.45258975, 0.45886568, 0.54680444]
+    14: [-1.97089803, -0.128250737, 300.867689, 0.42405458, 0.59517182, 0.56236239, 0.38690667]
+    15: [-1.50259591, -0.0313240790, 400.699101, 0.45946361, 0.4809916,  0.50211729, 0.55264681]
+
+camera_metadata:
+  0_intrinsics: [[683.6199340820312, 0.0, 615.1160278320312], [0.0, 683.6199340820312, 345.32354736328125], [0.0, 0.0, 1.0]]
+  0_distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
+  02baselink: [-0.2388, 0.06, 0.75, -0.5, 0.49999999999755174, -0.5, 0.5000000000024483]
+  1_intrinsics: [[910.4178466796875, 0.0, 648.44140625], [0.0, 910.4166870117188, 354.0118408203125], [0.0, 0.0, 1.0]]
+  1_distortion: [0.0, 0.0, 0.0, 0.0, 0.0]
+  12baselink: [-0.3700594606670597, -0.006647301538708517, 0.7427924789987381, -0.4981412857230513, -0.4907829006275322, 0.5090864815669471, 0.5018149813673275]
