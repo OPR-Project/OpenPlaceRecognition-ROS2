@@ -1,5 +1,11 @@
 # OpenPlaceRecognition-ROS2
 
+The ROS2 wrapper is intended for:
+
+- 🔌 **Easy integration** of multimodal localization into robots and autonomous systems based on ROS2.
+- 🚘 **Application in existing robotic platforms and autopilots** running ROS2.
+- ⚙️ **Rapid deployment** of neural network-based global localization methods into real-world ROS2 projects.
+
 # Installation
 
 ## Prerequisites
