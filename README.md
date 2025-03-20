@@ -74,3 +74,7 @@ Run the visualizer node using launch file:
 ```bash
 ros2 launch open_place_recognition visualizer_launch.py
 ```
+
+# License
+
+[Apache 2.0 license](./LICENSE)
