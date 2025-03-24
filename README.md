@@ -6,6 +6,11 @@ The ROS2 wrapper is intended for:
 - 🚘 **Application in existing robotic platforms and autopilots** running ROS2.
 - ⚙️ **Rapid deployment** of neural network-based global localization methods into real-world ROS2 projects.
 
+> Check out out [OpenPlaceRecognition library](https://github.com/OPR-Project/OpenPlaceRecognition).
+> It is a library for place recognition and localization, which includes a collection of datasets, including ITLP-Campus.
+> The library provides a unified API for loading datasets, training and evaluating models, and performing place recognition tasks.
+> The library is designed to be easy to use and extensible, allowing researchers and developers to quickly experiment with different models and datasets.
+
 ## Installation
 
 ### Requirements
