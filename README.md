@@ -6,27 +6,42 @@ The ROS2 wrapper is intended for:
 - 🚘 **Application in existing robotic platforms and autopilots** running ROS2.
 - ⚙️ **Rapid deployment** of neural network-based global localization methods into real-world ROS2 projects.
 
-# Installation
+## Installation
 
-## Prerequisites
+### Requirements
 
-- [OpenPlaceRecognition](https://github.com/OPR-Project/OpenPlaceRecognition) recommended environment:
-    - Ubuntu 22.04
-    - Python 3.10
-    - CUDA 12.1.1
-    - cuDNN 8
-    - PyTorch 2.1.2
-    - torhvision 0.16.2
-    - MinkowskiEngine
-    - faiss
-- ROS2 Humble
+#### Hardware
+
+- **CPU**: 6 or more physical cores
+- **RAM**: at least 8 GB
+- **GPU**: NVIDIA RTX 2060 or higher (to ensure adequate performance)
+- **Video memory**: at least 4 GB
+- **Storage**: SSD recommended for faster loading of data and models
+
+#### Software
+
+- **Operating System**:
+  - Any OS with support for Docker and CUDA >= 11.1.
+    *Ubuntu 20.04 or later is recommended.*
+
+- **Dependencies**:
+  - Python >= 3.10
+  - CUDA Toolkit >= 11.1
+  - cuDNN >= 7.5
+  - [OpenPlaceRecognition](https://github.com/OPR-Project/OpenPlaceRecognition) 
+  - ROS2 Humble
+
+### Quick start
 
 It is highly recommended to use the provided Dockerfile to build the environment.
 The scripts to build, run and enter the container are provided in the [docker/](./docker) directory.
 You can use the following commands:
 
 ```bash
-# run from the repo root directory
+# 0. clone the repository and init submodules
+git clone https://github.com/OPR-Project/OpenPlaceRecognition-ROS2.git
+cd OpenPlaceRecognition-ROS2
+git submodule update --init --recursive
 
 # 1. build the image
 bash docker/build.sh
