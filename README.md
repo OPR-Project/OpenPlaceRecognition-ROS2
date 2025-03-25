@@ -29,12 +29,20 @@ The ROS2 wrapper is intended for:
   - Any OS with support for Docker and CUDA >= 11.1.
     *Ubuntu 20.04 or later is recommended.*
 
-- **Dependencies**:
+- **Dependencies** (if not using Docker):
   - Python >= 3.10
   - CUDA Toolkit >= 11.1
   - cuDNN >= 7.5
   - [OpenPlaceRecognition](https://github.com/OPR-Project/OpenPlaceRecognition) 
   - ROS2 Humble
+
+If you want to install all dependencies manually, please refer to the
+[Advanced Installation section of the OpenPlaceRecognition documentation](https://openplacerecognition.readthedocs.io/en/latest/#installation)
+for detailed instructions.
+
+The only additional dependency is ROS2. Please refer to the 
+[ROS2 Humble installation guide](https://docs.ros.org/en/humble/Installation.html)
+for instructions on how to install it.
 
 ### Quick start
 
