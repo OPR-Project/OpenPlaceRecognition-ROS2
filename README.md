@@ -73,9 +73,9 @@ Run the following command inside the container:
 pip install -e ~/ros2_ws/dependencies/OpenPlaceRecognition
 ```
 
-# Running nodes
+## Running nodes
 
-## Build the workspace
+### Build the workspace
 
 Inside `ros2_ws/` directory, run the following command:
 
@@ -83,7 +83,7 @@ Inside `ros2_ws/` directory, run the following command:
 colcon build --packages-select open_place_recognition opr_interfaces
 ```
 
-## Run the nodes
+### Run the nodes
 
 Open the new terminal and run:
 
@@ -103,6 +103,6 @@ Run the visualizer node using launch file:
 ros2 launch open_place_recognition visualizer_launch.py
 ```
 
-# License
+## License
 
 [Apache 2.0 license](./LICENSE)
