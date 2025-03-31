@@ -37,6 +37,6 @@ model:
     _target_: opr.modules.Concat
 
 # database_dir: /home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/outdoor_2023-04-11-day
-model_weights_path: OpenPlaceRecognition/weights/place_recognition/multimodal_with_soc_outdoor_nclt.pth
+model_weights_path: weights/place_recognition/multimodal_with_soc_outdoor_nclt.pth
 device: cuda
 pointcloud_quantization_size: 0.5

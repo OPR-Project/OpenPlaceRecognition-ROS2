@@ -44,35 +44,37 @@ class PlaceRecognitionNode(Node):
         super().__init__("place_recognition")
         # Declare required parameters directly in __init__
         self.declare_parameter("image_front_topic", "", ParameterDescriptor(description="Front camera image topic."))
-        self.declare_parameter("image_back_topic", "", ParameterDescriptor(description="Back camera image topic."))
-        self.declare_parameter("mask_front_topic", "", ParameterDescriptor(description="Front semantic segmentation mask topic."))
-        self.declare_parameter("mask_back_topic", "", ParameterDescriptor(description="Back semantic segmentation mask topic."))
-        self.declare_parameter("lidar_topic", "", ParameterDescriptor(description="Lidar pointcloud topic."))
-        self.declare_parameter("pipeline_cfg", "", ParameterDescriptor(description="Path to the pipeline configuration file."))
-        self.declare_parameter("image_resize", [], ParameterDescriptor(description="Image resize dimensions."))
+        self.declare_parameter("image_back_topic",  "", ParameterDescriptor(description="Back camera image topic."))
+        self.declare_parameter("mask_front_topic",  "", ParameterDescriptor(description="Front semantic segmentation mask topic."))
+        self.declare_parameter("mask_back_topic",   "", ParameterDescriptor(description="Back semantic segmentation mask topic."))
+        self.declare_parameter("lidar_topic",       "", ParameterDescriptor(description="Lidar pointcloud topic."))
+        self.declare_parameter("dataset_dir",        "", ParameterDescriptor(description="dataset directory."))
+        self.declare_parameter("pipeline_cfg",      "", ParameterDescriptor(description="Path to the pipeline configuration file."))
+        self.declare_parameter("image_resize", rclpy.Parameter.Type.INTEGER_ARRAY, ParameterDescriptor(description="Image resize dimensions."))
         self.declare_parameter("enable_front_camera", True, ParameterDescriptor(description="Enable front camera."))
-        self.declare_parameter("enable_back_camera", True, ParameterDescriptor(description="Enable back camera."))
-        self.declare_parameter("enable_lidar", True, ParameterDescriptor(description="Enable lidar sensor."))
-        self.declare_parameter("global_ref_topic", "", ParameterDescriptor(description="Global reference system topic (e.g. GPS/Barometer, WGS84)."))
-        self.declare_parameter("enable_global_ref", True, ParameterDescriptor(description="Enable global reference subscription."))
-        self.declare_parameter("reserve", False, ParameterDescriptor(description="Reserve variable for future use."))
+        self.declare_parameter("enable_back_camera",  True, ParameterDescriptor(description="Enable back camera."))
+        self.declare_parameter("enable_lidar",        True, ParameterDescriptor(description="Enable lidar sensor."))
+        self.declare_parameter("global_ref_topic",  "", ParameterDescriptor(description="Global reference system topic (e.g. GPS/Barometer, WGS84)."))
+        self.declare_parameter("enable_global_ref",   True, ParameterDescriptor(description="Enable global reference subscription."))
+        self.declare_parameter("reserve",             False, ParameterDescriptor(description="Reserve variable for future use."))
 
         # Retrieve topics and configuration from parameters.
-        image_front_topic = self.get_parameter("image_front_topic").get_parameter_value().string_value
-        image_back_topic = self.get_parameter("image_back_topic").get_parameter_value().string_value
-        mask_front_topic = self.get_parameter("mask_front_topic").get_parameter_value().string_value
-        mask_back_topic = self.get_parameter("mask_back_topic").get_parameter_value().string_value
-        lidar_topic = self.get_parameter("lidar_topic").get_parameter_value().string_value
-        pipeline_cfg = self.get_parameter("pipeline_cfg").get_parameter_value().string_value
-        image_resize = self.get_parameter("image_resize").get_parameter_value().integer_array_value
+        image_front_topic       = self.get_parameter("image_front_topic").get_parameter_value().string_value
+        image_back_topic        = self.get_parameter("image_back_topic").get_parameter_value().string_value
+        mask_front_topic        = self.get_parameter("mask_front_topic").get_parameter_value().string_value
+        mask_back_topic         = self.get_parameter("mask_back_topic").get_parameter_value().string_value
+        lidar_topic             = self.get_parameter("lidar_topic").get_parameter_value().string_value
+        dataset_dir             = self.get_parameter("dataset_dir").get_parameter_value().string_value
+        pipeline_cfg            = self.get_parameter("pipeline_cfg").get_parameter_value().string_value
+        image_resize            = self.get_parameter("image_resize").get_parameter_value().integer_array_value
 
         # Retrieve sensor enable/disable parameters and global reference topic.
         self.enable_front_camera = self.get_parameter("enable_front_camera").get_parameter_value().bool_value
         self.enable_back_camera = self.get_parameter("enable_back_camera").get_parameter_value().bool_value
-        self.enable_lidar = self.get_parameter("enable_lidar").get_parameter_value().bool_value
-        self.enable_global_ref = self.get_parameter("enable_global_ref").get_parameter_value().bool_value
-        self.global_ref_topic = self.get_parameter("global_ref_topic").get_parameter_value().string_value
-        self.reserve = self.get_parameter("reserve").get_parameter_value().bool_value
+        self.enable_lidar       = self.get_parameter("enable_lidar").get_parameter_value().bool_value
+        self.enable_global_ref  = self.get_parameter("enable_global_ref").get_parameter_value().bool_value
+        self.global_ref_topic   = self.get_parameter("global_ref_topic").get_parameter_value().string_value
+        self.reserve            = self.get_parameter("reserve").get_parameter_value().bool_value
 
         # Initialize CvBridge for image conversions.
         self.cv_bridge = CvBridge()
@@ -133,19 +135,29 @@ class PlaceRecognitionNode(Node):
         self.global_ref = None
 
         # Instantiate the place recognition pipeline from configuration.
-        pipeline_config = OmegaConf.load(pipeline_cfg)
-        self.pr_pipe = instantiate(pipeline_config)
+        cfg = OmegaConf.load(pipeline_cfg)
+        if not os.path.exists(dataset_dir):
+            self.get_logger().error(f"dataset_dir does not exist: {dataset_dir}")
+            exit(1)
+        model_weights_path = os.path.join(os.path.expanduser("~"), "OpenPlaceRecognition", cfg.model_weights_path)
+        if not os.path.exists(dataset_dir):
+            self.get_logger().error(f"model_weights_path does not exist: {model_weights_path}")
+            exit(1)
+        cfg.database_dir = dataset_dir
+        cfg.model_weights_path = model_weights_path
+
+        self.pipeline = instantiate(cfg)
 
         # Check for Scene Object Context (SOC) module support.
-        if self.pr_pipe.model.soc_module is not None:
+        if self.pipeline.model.soc_module is not None:
             self.load_soc = True
             self.get_logger().info("self.load_soc is set to True.")
             sensors_cfg = OmegaConf.load(os.path.join(get_package_share_directory("open_place_recognition"), "configs/sensors/husky.yaml"))
-            anno_cfg = OmegaConf.load(os.path.join(get_package_share_directory("open_place_recognition"), "configs/anno/oneformer.yaml"))
+            anno_cfg    = OmegaConf.load(os.path.join(get_package_share_directory("open_place_recognition"), "configs/anno/oneformer.yaml"))
             self.front_cam_proj = Projector(sensors_cfg.front_cam, sensors_cfg.lidar)
             self.back_cam_proj = Projector(sensors_cfg.back_cam, sensors_cfg.lidar)
             self.max_distance_soc = 50.0
-            self.top_k_soc = self.pr_pipe.model.soc_module.num_objects
+            self.top_k_soc = self.pipeline.model.soc_module.num_objects
             self.special_classes = anno_cfg.special_classes
             self.soc_coords_type = "euclidean"
         else:
@@ -231,16 +243,14 @@ class PlaceRecognitionNode(Node):
             A PyTorch tensor representing packed objects.
         """
         coords_front, _, in_image_front = self.front_cam_proj(lidar_scan)
-        coords_back, _, in_image_back = self.back_cam_proj(lidar_scan)
+        coords_back, _, in_image_back   = self.back_cam_proj(lidar_scan)
         point_labels = np.zeros(len(lidar_scan), dtype=np.uint8)
         point_labels[in_image_front] = get_points_labels_by_mask(coords_front, mask_front)
-        point_labels[in_image_back] = get_points_labels_by_mask(coords_back, mask_back)
+        point_labels[in_image_back]  = get_points_labels_by_mask(coords_back, mask_back)
         instances_front = semantic_mask_to_instances(mask_front, area_threshold=10, labels_whitelist=self.special_classes)
-        instances_back = semantic_mask_to_instances(mask_back, area_threshold=10, labels_whitelist=self.special_classes)
-        objects_front = instance_masks_to_objects(instances_front, coords_front,
-                                                  point_labels[in_image_front], lidar_scan[in_image_front])
-        objects_back = instance_masks_to_objects(instances_back, coords_back,
-                                                 point_labels[in_image_back], lidar_scan[in_image_back])
+        instances_back  = semantic_mask_to_instances(mask_back, area_threshold=10, labels_whitelist=self.special_classes)
+        objects_front   = instance_masks_to_objects(instances_front, coords_front, point_labels[in_image_front], lidar_scan[in_image_front])
+        objects_back    = instance_masks_to_objects(instances_back, coords_back, point_labels[in_image_back], lidar_scan[in_image_back])
         objects = {**objects_front, **objects_back}
         packed_objects = pack_objects(objects, self.top_k_soc, self.max_distance_soc, self.special_classes)
 
@@ -319,15 +329,15 @@ class PlaceRecognitionNode(Node):
 
         mapping = self.subscriber_mapping
         front_image_msg = msgs[mapping["front_image"]] if "front_image" in mapping else None
-        front_mask_msg = msgs[mapping["front_mask"]] if "front_mask" in mapping else None
-        back_image_msg = msgs[mapping["back_image"]] if "back_image" in mapping else None
-        back_mask_msg = msgs[mapping["back_mask"]] if "back_mask" in mapping else None
-        lidar_msg = msgs[mapping["lidar"]] if "lidar" in mapping else None
+        front_mask_msg  = msgs[mapping["front_mask"]] if "front_mask" in mapping else None
+        back_image_msg  = msgs[mapping["back_image"]] if "back_image" in mapping else None
+        back_mask_msg   = msgs[mapping["back_mask"]] if "back_mask" in mapping else None
+        lidar_msg       = msgs[mapping["lidar"]] if "lidar" in mapping else None
 
         front_image = self.cv_bridge.compressed_imgmsg_to_cv2(front_image_msg) if front_image_msg is not None else None
-        back_image = self.cv_bridge.compressed_imgmsg_to_cv2(back_image_msg) if back_image_msg is not None else None
-        front_mask = self.cv_bridge.imgmsg_to_cv2(front_mask_msg) if front_mask_msg is not None else None
-        back_mask = self.cv_bridge.imgmsg_to_cv2(back_mask_msg) if back_mask_msg is not None else None
+        back_image  = self.cv_bridge.compressed_imgmsg_to_cv2(back_image_msg) if back_image_msg is not None else None
+        front_mask  = self.cv_bridge.imgmsg_to_cv2(front_mask_msg) if front_mask_msg is not None else None
+        back_mask   = self.cv_bridge.imgmsg_to_cv2(back_mask_msg) if back_mask_msg is not None else None
 
         if lidar_msg is not None:
             points = read_points(lidar_msg, field_names=("x", "y", "z"))
@@ -341,7 +351,7 @@ class PlaceRecognitionNode(Node):
             pointcloud=pointcloud
         )
 
-        output = self.pr_pipe.infer(input_data)
+        output = self.pipeline.infer(input_data)
         t_taken = self.get_clock().now() - t_start
         self.get_logger().info(f"Place recognition inference took: {t_taken.nanoseconds / 1e6} ms.")
 

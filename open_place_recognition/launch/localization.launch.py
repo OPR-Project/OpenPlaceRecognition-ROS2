@@ -43,7 +43,7 @@ def generate_launch_description():
         ),
         # Global reference system (e.g. GPS, barometer) parameters
         DeclareLaunchArgument(
-            'enable_global_reference',
+            'enable_global_ref',
             default_value='true',
             description='Enable subscription to global reference system (e.g. GPS, barometer).'
         ),
@@ -54,7 +54,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'dataset_dir',
-            default_value=os.path.join(os.path.expanduser("~"), "Datasets", "06_2023-08-18-night"),
+            default_value=os.path.join(os.path.expanduser("~"), "Datasets/itlp_campus_outdoor/01_2023-02-21"),
             description='Path to the dataset directory (database path)'
         ),
         DeclareLaunchArgument(
@@ -109,7 +109,7 @@ def generate_launch_description():
         "enable_front_camera":      LaunchConfiguration("enable_front_camera"),
         "enable_back_camera":       LaunchConfiguration("enable_back_camera"),
         "enable_lidar":             LaunchConfiguration("enable_lidar"),
-        "enable_global_reference":  LaunchConfiguration("enable_global_reference"),
+        "enable_global_ref":        LaunchConfiguration("enable_global_ref"),
         "global_ref_topic":         LaunchConfiguration("global_ref_topic"),
         "reserve":                  LaunchConfiguration("reserve"),
     }

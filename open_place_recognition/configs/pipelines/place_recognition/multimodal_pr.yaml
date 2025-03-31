@@ -28,6 +28,6 @@ model:
   fusion_module:
     _target_: opr.modules.Concat
 
-model_weights_path: OpenPlaceRecognition/weights/place_recognition/multi-image_lidar_late-fusion_nclt.pth
+model_weights_path: weights/place_recognition/multi-image_lidar_late-fusion_nclt.pth
 device: cuda
 pointcloud_quantization_size: 0.5

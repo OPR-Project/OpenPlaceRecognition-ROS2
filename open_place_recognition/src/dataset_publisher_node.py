@@ -24,22 +24,22 @@ class DatabasePublisherNode(Node):
         super().__init__('database_publisher')
         
         # Declare parameters
-        self.declare_parameter('dataset_dir', '', ParameterDescriptor(description="Path to the dataset directory."))
-        self.declare_parameter('enable_front_camera', True, ParameterDescriptor(description="Enable front camera publishing."))
-        self.declare_parameter('enable_back_camera', True, ParameterDescriptor(description="Enable back camera publishing."))
-        self.declare_parameter('enable_lidar', True, ParameterDescriptor(description="Enable lidar publishing."))
-        self.declare_parameter('enable_global_ref', True, ParameterDescriptor(description="Enable global reference subscription."))
-        self.declare_parameter('global_ref_topic', '/global_ref', ParameterDescriptor(description="Global reference topic."))
-        self.declare_parameter('reserve', False, ParameterDescriptor(description="Reserved for future use."))
+        self.declare_parameter('dataset_dir',           '', ParameterDescriptor(description="Path to the dataset directory."))
+        self.declare_parameter('enable_front_camera',   True, ParameterDescriptor(description="Enable front camera publishing."))
+        self.declare_parameter('enable_back_camera',    True, ParameterDescriptor(description="Enable back camera publishing."))
+        self.declare_parameter('enable_lidar',          True, ParameterDescriptor(description="Enable lidar publishing."))
+        self.declare_parameter('enable_global_ref',     True, ParameterDescriptor(description="Enable global reference subscription."))
+        self.declare_parameter('global_ref_topic',      '/global_ref', ParameterDescriptor(description="Global reference topic."))
+        self.declare_parameter('reserve',               False, ParameterDescriptor(description="Reserved for future use."))
         
         # Declare topic parameters
-        self.declare_parameter('front_cam_topic', '/zed_node/left/image_rect_color/compressed')
-        self.declare_parameter('front_cam_mask_topic', '/zed_node/left/semantic_segmentation')
-        self.declare_parameter('front_cam_info_topic', '/zed_node/left/image_rect_color/camera_info')
-        self.declare_parameter('back_cam_topic', '/realsense_back/color/image_raw/compressed')
-        self.declare_parameter('back_cam_mask_topic', '/realsense_back/semantic_segmentation')
-        self.declare_parameter('back_cam_info_topic', '/realsense_back/color/image_raw/camera_info')
-        self.declare_parameter('lidar_topic', '/velodyne_points')
+        self.declare_parameter('front_cam_topic',       '/zed_node/left/image_rect_color/compressed')
+        self.declare_parameter('front_cam_mask_topic',  '/zed_node/left/semantic_segmentation')
+        self.declare_parameter('front_cam_info_topic',  '/zed_node/left/image_rect_color/camera_info')
+        self.declare_parameter('back_cam_topic',        '/realsense_back/color/image_raw/compressed')
+        self.declare_parameter('back_cam_mask_topic',   '/realsense_back/semantic_segmentation')
+        self.declare_parameter('back_cam_info_topic',   '/realsense_back/color/image_raw/camera_info')
+        self.declare_parameter('lidar_topic',           '/velodyne_points')
         
         # Declare TF frame parameters
         self.declare_parameter('tf_parent_frame', 'base_link')

@@ -1,36 +1,26 @@
-#!/usr/bin/env python3
-
+# launch/convert.launch.py
 import os
-from launch import LaunchDescription
-from launch_ros.actions import Node
-from launch.actions import ExecuteProcess
+import launch
+import launch_ros.actions
+
+home_dir = os.path.expanduser("~")
 
 def generate_launch_description():
-    rosbag_file = os.path.expanduser('~/.ros/opr_dataset') # Adjust this path as needed.
-
-    return LaunchDescription([
-        Node(
-            package='open_place_recognition',
-            executable='dataset_from_rosbag_node.py',
-            name='dataset_from_rosbag_node',
-            output='screen',
+    return launch.LaunchDescription([
+        launch_ros.actions.Node(
+            package='your_package_name',
+            executable='bag_converter_node',
+            name='bag_converter_node',
             parameters=[
-                {"front_camera_topic":  "/front_cam/camera_depth/image_raw"},
-                {"back_camera_topic":   "/back_cam//camera_depth/image_raw"},
-                {"lidar_topic":         "/lidar/points2_raw"},
-                {"pose_topic":          "/my_pose_topic"},
-                {"output_path":         "~/.ros/opr_dataset"},
-                {"track_name":          "my_experiment_01"},
-                # Optionally pass the rosbag file path as a parameter if your node needs it:
-                {"rosbag_file": rosbag_file}
-            ]
-        ),
-        # ExecuteProcess to run ros2 bag play using the specified rosbag directory
-        ExecuteProcess(
-            cmd=['ros2', 'bag', 'play', rosbag_file],
-            output='screen'
+                {"input_dir":       os.path.join(home_dir, 'ros2_bags')},
+                {"trajectory_file": os.path.join(home_dir, 'ros2_bags/trajectory.db3')},
+                {"out_dir":         os.path.expanduser('~/.ros/opr_dataset')},
+                {"distance_threshold": 5.0},
+                {"max_diff": 60000000},
+                {"front_cam_topic": "/front/depth_camera/image_raw"},
+                {"back_cam_topic":  "/back/depth_camera/image_raw"},
+                {"lidar_topic":     "/lidar/points2_raw"},
+                {"trajectory_topic": "/global_trajectory_0"},
+            ],
         )
     ])
-
-if __name__ == '__main__':
-    generate_launch_description()

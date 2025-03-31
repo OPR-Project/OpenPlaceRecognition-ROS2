@@ -42,6 +42,6 @@ model:
     _target_: opr.modules.Concat
 
 # database_dir: /home/docker_opr_ros2/Datasets/itlpcampus_nature_exps/databases/indoor_floor_5
-model_weights_path: OpenPlaceRecognition/weights/place_recognition/multi-image_multi-semantic_lidar_late-fusion_nclt.pth
+model_weights_path: weights/place_recognition/multi-image_multi-semantic_lidar_late-fusion_nclt.pth
 device: cuda
 pointcloud_quantization_size: 0.5

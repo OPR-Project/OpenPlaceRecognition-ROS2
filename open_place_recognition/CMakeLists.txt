@@ -27,7 +27,6 @@ install(PROGRAMS
   src/localization_node.py
   src/place_recognition_node.py
 #   src/test_depth_estimation_node.py
-#   src/test_opr_odom_node.py
 #   src/test_visualizer_node.py
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -57,19 +57,20 @@ class LocalizationNode(Node):
         
         # Declare required parameters directly in __init__
         self.declare_parameter("image_front_topic", "", ParameterDescriptor(description="Front camera image topic."))
-        self.declare_parameter("image_back_topic", "", ParameterDescriptor(description="Back camera image topic."))
-        self.declare_parameter("mask_front_topic", "", ParameterDescriptor(description="Front semantic segmentation mask topic."))
-        self.declare_parameter("mask_back_topic", "", ParameterDescriptor(description="Back semantic segmentation mask topic."))
-        self.declare_parameter("lidar_topic", "", ParameterDescriptor(description="Lidar pointcloud topic."))
-        self.declare_parameter("pipeline_cfg", "", ParameterDescriptor(description="Path to the pipeline configuration file."))
+        self.declare_parameter("image_back_topic",  "", ParameterDescriptor(description="Back camera image topic."))
+        self.declare_parameter("mask_front_topic",  "", ParameterDescriptor(description="Front semantic segmentation mask topic."))
+        self.declare_parameter("mask_back_topic",   "", ParameterDescriptor(description="Back semantic segmentation mask topic."))
+        self.declare_parameter("lidar_topic",       "", ParameterDescriptor(description="Lidar pointcloud topic."))
+        self.declare_parameter("dataset_dir",        "", ParameterDescriptor(description="dataset directory."))
+        self.declare_parameter("pipeline_cfg",      "", ParameterDescriptor(description="Path to the pipeline configuration file."))
         self.declare_parameter("exclude_dynamic_classes", False, ParameterDescriptor(description="Exclude dynamic objects from the input data."))
-        self.declare_parameter("image_resize", [], ParameterDescriptor(description="Image resize dimensions."))
+        self.declare_parameter("image_resize", rclpy.Parameter.Type.INTEGER_ARRAY, ParameterDescriptor(description="Image resize dimensions."))
         # New parameters for enabling/disabling sensors and global reference.
         self.declare_parameter("enable_front_camera", True, ParameterDescriptor(description="Enable front camera."))
-        self.declare_parameter("enable_back_camera", True, ParameterDescriptor(description="Enable back camera."))
-        self.declare_parameter("enable_lidar", True, ParameterDescriptor(description="Enable lidar sensor."))
-        self.declare_parameter("enable_global_reference", True, ParameterDescriptor(description="Enable global reference system subscription."))
-        self.declare_parameter("global_ref_topic", "", ParameterDescriptor(description="Global reference topic (e.g. GPS/Barometer, WGS84)."))
+        self.declare_parameter("enable_back_camera",  True, ParameterDescriptor(description="Enable back camera."))
+        self.declare_parameter("enable_lidar",        True, ParameterDescriptor(description="Enable lidar sensor."))
+        self.declare_parameter("enable_global_ref",   True, ParameterDescriptor(description="Enable global reference system subscription."))
+        self.declare_parameter("global_ref_topic",  "", ParameterDescriptor(description="Global reference topic (e.g. GPS/Barometer, WGS84)."))
         
         # Retrieve parameters from the parameter server.
         self.image_front_topic      = self.get_parameter("image_front_topic").get_parameter_value().string_value
@@ -77,6 +78,7 @@ class LocalizationNode(Node):
         self.mask_front_topic       = self.get_parameter("mask_front_topic").get_parameter_value().string_value
         self.mask_back_topic        = self.get_parameter("mask_back_topic").get_parameter_value().string_value
         self.lidar_topic            = self.get_parameter("lidar_topic").get_parameter_value().string_value
+        self.dataset_dir            = self.get_parameter("dataset_dir").get_parameter_value().string_value
         self.pipeline_cfg           = self.get_parameter("pipeline_cfg").get_parameter_value().string_value
         self.exclude_dynamic_classes = self.get_parameter("exclude_dynamic_classes").get_parameter_value().bool_value
         self.image_resize           = self.get_parameter("image_resize").get_parameter_value().integer_array_value
@@ -84,7 +86,7 @@ class LocalizationNode(Node):
         self.enable_front_camera    = self.get_parameter("enable_front_camera").get_parameter_value().bool_value
         self.enable_back_camera     = self.get_parameter("enable_back_camera").get_parameter_value().bool_value
         self.enable_lidar           = self.get_parameter("enable_lidar").get_parameter_value().bool_value
-        self.enable_global_reference = self.get_parameter("enable_global_reference").get_parameter_value().bool_value
+        self.enable_global_ref      = self.get_parameter("enable_global_ref").get_parameter_value().bool_value
         self.global_ref_topic       = self.get_parameter("global_ref_topic").get_parameter_value().string_value
 
         # Initialize cv_bridge for converting ROS image messages to OpenCV format.
@@ -137,12 +139,12 @@ class LocalizationNode(Node):
             self.get_logger().error("No sensors enabled; cannot create synchronizer.")
 
         # Create publishers for pose and database match index.
-        self.db_match_pose_pub = self.create_publisher(PoseStamped, "/place_recognition/pose", 10)
-        self.idx_pub = self.create_publisher(DatabaseMatchIndex, "/place_recognition/db_idx", 10)
+        self.db_match_pose_pub  = self.create_publisher(PoseStamped, "/place_recognition/pose", 10)
+        self.idx_pub            = self.create_publisher(DatabaseMatchIndex, "/place_recognition/db_idx", 10)
         self.estimated_pose_pub = self.create_publisher(PoseStamped, "/localization/pose", 10)
 
         # If enabled, create a subscriber for the global reference system.
-        if self.enable_global_reference:
+        if self.enable_global_ref:
             from sensor_msgs.msg import NavSatFix
             self.global_ref_sub = self.create_subscription(NavSatFix, self.global_ref_topic, self.global_ref_callback, 10)
         else:
@@ -150,9 +152,24 @@ class LocalizationNode(Node):
         self.global_ref = None
 
         # Instantiate the localization pipeline from configuration.
+        if not os.path.exists(self.pipeline_cfg):
+            exit(1)
         cfg = OmegaConf.load(self.pipeline_cfg)
-        cfg.database_dir = os.path.abspath(os.path.join(os.path.expanduser('~'), cfg.database_dir))
-        cfg.model_weights_path = os.path.abspath(os.path.join(os.path.expanduser('~'), cfg.model_weights_path))
+
+        if not os.path.exists(self.dataset_dir):
+            exit(1)
+
+        # Check out the open_place_recognition/configs/pipelines/localization_pipeline.yaml
+        print("This node is not fully developed")
+        exit(1)
+        model_weights_path = os.path.join(os.path.expanduser("~"), "OpenPlaceRecognition", cfg.model_weights_path)
+        if not os.path.exists(self.dataset_dir):
+            exit(1)
+        self.get_logger().error(f"dataset_dir does not exist: {self.dataset_dir}")
+        self.get_logger().error(f"model_weights_path does not exist: {model_weights_path}")
+        cfg.database_dir = self.dataset_dir
+        cfg.model_weights_path = model_weights_path
+
 
         self.pipeline = instantiate(cfg)
 
