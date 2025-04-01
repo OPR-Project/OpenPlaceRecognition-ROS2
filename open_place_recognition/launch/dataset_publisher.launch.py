@@ -102,6 +102,28 @@ def generate_launch_description():
         description='Lidar TF frame'
     )
 
+    # New QoS arguments (separate for front camera, back camera, lidar, global ref)
+    qos_front_cam_arg = DeclareLaunchArgument(
+        'qos_front_cam',
+        default_value='2',
+        description='QoS for front camera (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_back_cam_arg = DeclareLaunchArgument(
+        'qos_back_cam',
+        default_value='2',
+        description='QoS for back camera (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_lidar_arg = DeclareLaunchArgument(
+        'qos_lidar',
+        default_value='2',
+        description='QoS for lidar (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_global_ref_arg = DeclareLaunchArgument(
+        'qos_global_ref',
+        default_value='2',
+        description='QoS for global ref subscription (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+
     # Use LaunchConfiguration substitutions to pass these values as parameters
     params = {
         "dataset_dir": LaunchConfiguration('dataset_dir'),
@@ -123,7 +145,12 @@ def generate_launch_description():
         "tf_parent_frame": LaunchConfiguration('tf_parent_frame'),
         "front_cam_frame": LaunchConfiguration('front_cam_frame'),
         "back_cam_frame": LaunchConfiguration('back_cam_frame'),
-        "lidar_frame": LaunchConfiguration('lidar_frame')
+        "lidar_frame": LaunchConfiguration('lidar_frame'),
+        # QoS
+        "qos_front_cam": LaunchConfiguration('qos_front_cam'),
+        "qos_back_cam": LaunchConfiguration('qos_back_cam'),
+        "qos_lidar": LaunchConfiguration('qos_lidar'),
+        "qos_global_ref": LaunchConfiguration('qos_global_ref'),
     }
 
     return LaunchDescription([
@@ -146,6 +173,10 @@ def generate_launch_description():
         front_cam_frame_arg,
         back_cam_frame_arg,
         lidar_frame_arg,
+        qos_front_cam_arg,
+        qos_back_cam_arg,
+        qos_lidar_arg,
+        qos_global_ref_arg,
         # Launch the node with the parameters
         Node(
             package='open_place_recognition',

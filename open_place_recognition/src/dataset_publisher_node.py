@@ -19,6 +19,9 @@ import tf2_ros
 from geometry_msgs.msg import TransformStamped
 from ament_index_python.packages import get_package_share_directory
 
+# Import QoS-related classes
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
+
 class DatabasePublisherNode(Node):
     def __init__(self):
         super().__init__('database_publisher')
@@ -47,6 +50,12 @@ class DatabasePublisherNode(Node):
         self.declare_parameter('back_cam_frame', 'realsense_back')
         self.declare_parameter('lidar_frame', 'velodyne')
         
+        # Declare QoS parameters
+        self.declare_parameter('qos_front_cam', 2, ParameterDescriptor(description="QoS for front camera (0=SystemDefault,1=BestEffort,2=Reliable)"))
+        self.declare_parameter('qos_back_cam',  2, ParameterDescriptor(description="QoS for back camera (0=SystemDefault,1=BestEffort,2=Reliable)"))
+        self.declare_parameter('qos_lidar',     2, ParameterDescriptor(description="QoS for lidar (0=SystemDefault,1=BestEffort,2=Reliable)"))
+        self.declare_parameter('qos_global_ref',2, ParameterDescriptor(description="QoS for global ref subscription (0=SystemDefault,1=BestEffort,2=Reliable)"))
+        
         # Retrieve parameters
         self.dataset_dir = self.get_parameter('dataset_dir').get_parameter_value().string_value
         if not self.dataset_dir:
@@ -74,23 +83,39 @@ class DatabasePublisherNode(Node):
         self.back_cam_frame         = self.get_parameter('back_cam_frame').get_parameter_value().string_value
         self.lidar_frame            = self.get_parameter('lidar_frame').get_parameter_value().string_value
         
+        # QoS parameter values
+        self.qos_front_cam_value    = self.get_parameter('qos_front_cam').get_parameter_value().integer_value
+        self.qos_back_cam_value     = self.get_parameter('qos_back_cam').get_parameter_value().integer_value
+        self.qos_lidar_value        = self.get_parameter('qos_lidar').get_parameter_value().integer_value
+        self.qos_global_ref_value   = self.get_parameter('qos_global_ref').get_parameter_value().integer_value
+        
+        # Create QoS profiles for each
+        self.qos_front_cam_profile  = self._create_qos_profile(self.qos_front_cam_value)
+        self.qos_back_cam_profile   = self._create_qos_profile(self.qos_back_cam_value)
+        self.qos_lidar_profile      = self._create_qos_profile(self.qos_lidar_value)
+        self.qos_global_ref_profile = self._create_qos_profile(self.qos_global_ref_value, depth=10)  # subscription with depth=10
+
         # Create publishers using the parameterized topics
         if self.enable_front_camera:
-            self.pub_front_cam      = self.create_publisher(CompressedImage, self.front_cam_topic, 1)
-            self.pub_front_cam_mask = self.create_publisher(Image, self.front_cam_mask_topic, 1)
-            self.pub_front_cam_info = self.create_publisher(CameraInfo, self.front_cam_info_topic, 1)
+            self.pub_front_cam      = self.create_publisher(CompressedImage, self.front_cam_topic, self.qos_front_cam_profile)
+            self.pub_front_cam_mask = self.create_publisher(Image, self.front_cam_mask_topic, self.qos_front_cam_profile)
+            self.pub_front_cam_info = self.create_publisher(CameraInfo, self.front_cam_info_topic, self.qos_front_cam_profile)
         else:
-            self.pub_front_cam      = self.pub_front_cam_mask = self.pub_front_cam_info = None
+            self.pub_front_cam      = None
+            self.pub_front_cam_mask = None
+            self.pub_front_cam_info = None
         
         if self.enable_back_camera:
-            self.pub_back_cam       = self.create_publisher(CompressedImage, self.back_cam_topic, 1)
-            self.pub_back_cam_mask  = self.create_publisher(Image, self.back_cam_mask_topic, 1)
-            self.pub_back_cam_info  = self.create_publisher(CameraInfo, self.back_cam_info_topic, 1)
+            self.pub_back_cam       = self.create_publisher(CompressedImage, self.back_cam_topic, self.qos_back_cam_profile)
+            self.pub_back_cam_mask  = self.create_publisher(Image, self.back_cam_mask_topic, self.qos_back_cam_profile)
+            self.pub_back_cam_info  = self.create_publisher(CameraInfo, self.back_cam_info_topic, self.qos_back_cam_profile)
         else:
-            self.pub_back_cam       = self.pub_back_cam_mask = self.pub_back_cam_info = None
+            self.pub_back_cam       = None
+            self.pub_back_cam_mask  = None
+            self.pub_back_cam_info  = None
         
         if self.enable_lidar:
-            self.pub_lidar = self.create_publisher(PointCloud2, self.lidar_topic, 1)
+            self.pub_lidar = self.create_publisher(PointCloud2, self.lidar_topic, self.qos_lidar_profile)
         else:
             self.pub_lidar = None
         
@@ -99,7 +124,12 @@ class DatabasePublisherNode(Node):
         
         # Global reference subscription (if enabled)
         if self.enable_global_ref:
-            self.global_ref_sub = self.create_subscription(NavSatFix, self.global_ref_topic, self.global_ref_callback, 10)
+            self.global_ref_sub = self.create_subscription(
+                NavSatFix, 
+                self.global_ref_topic, 
+                self.global_ref_callback, 
+                self.qos_global_ref_profile
+            )
         else:
             self.global_ref_sub = None
         self.global_ref = None
@@ -126,6 +156,19 @@ class DatabasePublisherNode(Node):
         
         self.get_logger().info("DatabasePublisherNode initialized.")
     
+    def _create_qos_profile(self, qos_value, depth=1):
+        """
+        Create a QoSProfile based on integer (0=SystemDefault,1=BestEffort,2=Reliable).
+        """
+        qos_profile = QoSProfile(depth=depth)
+        if qos_value == 0:
+            qos_profile.reliability = QoSReliabilityPolicy.SYSTEM_DEFAULT
+        elif qos_value == 1:
+            qos_profile.reliability = QoSReliabilityPolicy.BEST_EFFORT
+        else:
+            qos_profile.reliability = QoSReliabilityPolicy.RELIABLE
+        return qos_profile
+
     def global_ref_callback(self, msg):
         self.global_ref = msg
         
@@ -234,6 +277,9 @@ class DatabasePublisherNode(Node):
             except Exception as e:
                 self.get_logger().error(f"Error publishing lidar config: {e}")
     
+    def global_ref_callback(self, msg):
+        self.global_ref = msg
+        
     def publish_one_row(self, i):
         self.publish_sensor_config()
         floor_num = int(self.track_df['floor'][i])
@@ -304,11 +350,10 @@ class DatabasePublisherNode(Node):
             return None
     
     def read_image_as_uncompressed(self, image_path, frame_id='camera'):
-
         if not os.path.exists(image_path):
             self.get_logger().error(f"Mask image not found: {image_path}")
             return None
-
+        
         img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             self.get_logger().error(f"Failed to read image {image_path}")

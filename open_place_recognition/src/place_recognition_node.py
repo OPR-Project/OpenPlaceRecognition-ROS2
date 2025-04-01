@@ -25,6 +25,9 @@ from std_msgs.msg import Int32
 from torch import Tensor
 from ament_index_python.packages import get_package_share_directory
 
+# QoS imports
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
+
 # Import custom message and processing functions
 from opr_interfaces.msg import DatabaseMatchIndex
 from opr.datasets.augmentations import DefaultImageTransform, DefaultSemanticTransform
@@ -42,13 +45,24 @@ class PlaceRecognitionNode(Node):
     
     def __init__(self):
         super().__init__("place_recognition")
-        # Declare required parameters directly in __init__
+
+        # ----------------------------------------------------------------------
+        # New QoS Parameters (separate for front camera, back camera, lidar, global ref):
+        # ----------------------------------------------------------------------
+        self.declare_parameter("qos_front_camera", 2, ParameterDescriptor(description="QoS for front camera (0=SystemDefault,1=BestEffort,2=Reliable)"))
+        self.declare_parameter("qos_back_camera",  2, ParameterDescriptor(description="QoS for back camera (0=SystemDefault,1=BestEffort,2=Reliable)"))
+        self.declare_parameter("qos_lidar",        2, ParameterDescriptor(description="QoS for lidar (0=SystemDefault,1=BestEffort,2=Reliable)"))
+        self.declare_parameter("qos_global_ref",   2, ParameterDescriptor(description="QoS for global ref subscription (0=SystemDefault,1=BestEffort,2=Reliable)"))
+
+        # ----------------------------------------------------------------------
+        # Declare required parameters directly in __init__ (original code):
+        # ----------------------------------------------------------------------
         self.declare_parameter("image_front_topic", "", ParameterDescriptor(description="Front camera image topic."))
         self.declare_parameter("image_back_topic",  "", ParameterDescriptor(description="Back camera image topic."))
         self.declare_parameter("mask_front_topic",  "", ParameterDescriptor(description="Front semantic segmentation mask topic."))
         self.declare_parameter("mask_back_topic",   "", ParameterDescriptor(description="Back semantic segmentation mask topic."))
         self.declare_parameter("lidar_topic",       "", ParameterDescriptor(description="Lidar pointcloud topic."))
-        self.declare_parameter("dataset_dir",        "", ParameterDescriptor(description="dataset directory."))
+        self.declare_parameter("dataset_dir",       "", ParameterDescriptor(description="dataset directory."))
         self.declare_parameter("pipeline_cfg",      "", ParameterDescriptor(description="Path to the pipeline configuration file."))
         self.declare_parameter("image_resize", rclpy.Parameter.Type.INTEGER_ARRAY, ParameterDescriptor(description="Image resize dimensions."))
         self.declare_parameter("enable_front_camera", True, ParameterDescriptor(description="Enable front camera."))
@@ -58,56 +72,99 @@ class PlaceRecognitionNode(Node):
         self.declare_parameter("enable_global_ref",   True, ParameterDescriptor(description="Enable global reference subscription."))
         self.declare_parameter("reserve",             False, ParameterDescriptor(description="Reserve variable for future use."))
 
-        # Retrieve topics and configuration from parameters.
-        image_front_topic       = self.get_parameter("image_front_topic").get_parameter_value().string_value
-        image_back_topic        = self.get_parameter("image_back_topic").get_parameter_value().string_value
-        mask_front_topic        = self.get_parameter("mask_front_topic").get_parameter_value().string_value
-        mask_back_topic         = self.get_parameter("mask_back_topic").get_parameter_value().string_value
-        lidar_topic             = self.get_parameter("lidar_topic").get_parameter_value().string_value
-        dataset_dir             = self.get_parameter("dataset_dir").get_parameter_value().string_value
-        pipeline_cfg            = self.get_parameter("pipeline_cfg").get_parameter_value().string_value
-        image_resize            = self.get_parameter("image_resize").get_parameter_value().integer_array_value
+        # ----------------------------------------------------------------------
+        # Retrieve QoS parameter values
+        # ----------------------------------------------------------------------
+        self.qos_front_cam_val = self.get_parameter("qos_front_camera").get_parameter_value().integer_value
+        self.qos_back_cam_val  = self.get_parameter("qos_back_camera").get_parameter_value().integer_value
+        self.qos_lidar_val     = self.get_parameter("qos_lidar").get_parameter_value().integer_value
+        self.qos_global_ref_val= self.get_parameter("qos_global_ref").get_parameter_value().integer_value
 
-        # Retrieve sensor enable/disable parameters and global reference topic.
+        # Create QoS profiles using the helper method below
+        self.qos_front_cam_profile  = self._create_qos_profile(self.qos_front_cam_val)
+        self.qos_back_cam_profile   = self._create_qos_profile(self.qos_back_cam_val)
+        self.qos_lidar_profile      = self._create_qos_profile(self.qos_lidar_val)
+        self.qos_global_ref_profile = self._create_qos_profile(self.qos_global_ref_val, depth=10)
+
+        # ----------------------------------------------------------------------
+        # Retrieve other parameters (original code)
+        # ----------------------------------------------------------------------
+        image_front_topic  = self.get_parameter("image_front_topic").get_parameter_value().string_value
+        image_back_topic   = self.get_parameter("image_back_topic").get_parameter_value().string_value
+        mask_front_topic   = self.get_parameter("mask_front_topic").get_parameter_value().string_value
+        mask_back_topic    = self.get_parameter("mask_back_topic").get_parameter_value().string_value
+        lidar_topic        = self.get_parameter("lidar_topic").get_parameter_value().string_value
+        dataset_dir        = self.get_parameter("dataset_dir").get_parameter_value().string_value
+        pipeline_cfg       = self.get_parameter("pipeline_cfg").get_parameter_value().string_value
+        image_resize       = self.get_parameter("image_resize").get_parameter_value().integer_array_value
+
         self.enable_front_camera = self.get_parameter("enable_front_camera").get_parameter_value().bool_value
-        self.enable_back_camera = self.get_parameter("enable_back_camera").get_parameter_value().bool_value
-        self.enable_lidar       = self.get_parameter("enable_lidar").get_parameter_value().bool_value
-        self.enable_global_ref  = self.get_parameter("enable_global_ref").get_parameter_value().bool_value
-        self.global_ref_topic   = self.get_parameter("global_ref_topic").get_parameter_value().string_value
-        self.reserve            = self.get_parameter("reserve").get_parameter_value().bool_value
+        self.enable_back_camera  = self.get_parameter("enable_back_camera").get_parameter_value().bool_value
+        self.enable_lidar        = self.get_parameter("enable_lidar").get_parameter_value().bool_value
+        self.enable_global_ref   = self.get_parameter("enable_global_ref").get_parameter_value().bool_value
+        self.global_ref_topic    = self.get_parameter("global_ref_topic").get_parameter_value().string_value
+        self.reserve             = self.get_parameter("reserve").get_parameter_value().bool_value
 
         # Initialize CvBridge for image conversions.
         self.cv_bridge = CvBridge()
 
-        # Create subscribers and map sensor names to synchronizer indices.
+        # ----------------------------------------------------------------------
+        # Create subscribers with their respective QoS profiles
+        # ----------------------------------------------------------------------
         subscribers = []
         mapping = {}
+
         if self.enable_front_camera:
-            self.image_front_sub = Subscriber(self, CompressedImage, image_front_topic)
+            self.image_front_sub = Subscriber(
+                self,
+                CompressedImage,
+                image_front_topic,
+                qos_profile=self.qos_front_cam_profile
+            )
             subscribers.append(self.image_front_sub)
             mapping["front_image"] = len(subscribers) - 1
 
-            self.mask_front_sub = Subscriber(self, Image, mask_front_topic)
+            self.mask_front_sub = Subscriber(
+                self,
+                Image,
+                mask_front_topic,
+                qos_profile=self.qos_front_cam_profile
+            )
             subscribers.append(self.mask_front_sub)
             mapping["front_mask"] = len(subscribers) - 1
         else:
             self.image_front_sub = None
-            self.mask_front_sub = None
+            self.mask_front_sub  = None
 
         if self.enable_back_camera:
-            self.image_back_sub = Subscriber(self, CompressedImage, image_back_topic)
+            self.image_back_sub = Subscriber(
+                self,
+                CompressedImage,
+                image_back_topic,
+                qos_profile=self.qos_back_cam_profile
+            )
             subscribers.append(self.image_back_sub)
             mapping["back_image"] = len(subscribers) - 1
 
-            self.mask_back_sub = Subscriber(self, Image, mask_back_topic)
+            self.mask_back_sub = Subscriber(
+                self,
+                Image,
+                mask_back_topic,
+                qos_profile=self.qos_back_cam_profile
+            )
             subscribers.append(self.mask_back_sub)
             mapping["back_mask"] = len(subscribers) - 1
         else:
             self.image_back_sub = None
-            self.mask_back_sub = None
+            self.mask_back_sub  = None
 
         if self.enable_lidar:
-            self.lidar_sub = Subscriber(self, PointCloud2, lidar_topic)
+            self.lidar_sub = Subscriber(
+                self,
+                PointCloud2,
+                lidar_topic,
+                qos_profile=self.qos_lidar_profile
+            )
             subscribers.append(self.lidar_sub)
             mapping["lidar"] = len(subscribers) - 1
         else:
@@ -125,16 +182,25 @@ class PlaceRecognitionNode(Node):
 
         # Create publishers for pose and database match index.
         self.pose_pub = self.create_publisher(PoseStamped, "/place_recognition/pose", 10)
-        self.idx_pub = self.create_publisher(DatabaseMatchIndex, "/place_recognition/db_idx", 10)
+        self.idx_pub  = self.create_publisher(DatabaseMatchIndex, "/place_recognition/db_idx", 10)
 
-        # Subscribe to global reference system messages if enabled.
+        # ----------------------------------------------------------------------
+        # Global reference subscription (with QoS) if enabled
+        # ----------------------------------------------------------------------
         if self.enable_global_ref:
-            self.global_ref_sub = self.create_subscription(NavSatFix, self.global_ref_topic, self.global_ref_callback, 10)
+            self.global_ref_sub = self.create_subscription(
+                NavSatFix,
+                self.global_ref_topic,
+                self.global_ref_callback,
+                self.qos_global_ref_profile
+            )
         else:
             self.global_ref_sub = None
         self.global_ref = None
 
-        # Instantiate the place recognition pipeline from configuration.
+        # ----------------------------------------------------------------------
+        # Instantiate the place recognition pipeline from configuration (original code)
+        # ----------------------------------------------------------------------
         cfg = OmegaConf.load(pipeline_cfg)
         if not os.path.exists(dataset_dir):
             self.get_logger().error(f"dataset_dir does not exist: {dataset_dir}")
@@ -165,9 +231,25 @@ class PlaceRecognitionNode(Node):
 
         # Set up image and mask transformations.
         self.image_transform = DefaultImageTransform(train=False, resize=image_resize)
-        self.mask_transform = DefaultSemanticTransform(train=False, resize=image_resize)
+        self.mask_transform  = DefaultSemanticTransform(train=False, resize=image_resize)
 
         self.get_logger().info(f"Initialized {self.__class__.__name__} node.")
+
+    # --------------------------------------------------------------------------
+    # Helper function to create QoSProfile from integer
+    # --------------------------------------------------------------------------
+    def _create_qos_profile(self, qos_value, depth=1) -> QoSProfile:
+        """
+        Create a QoSProfile based on integer (0=SystemDefault,1=BestEffort,2=Reliable).
+        """
+        profile = QoSProfile(depth=depth)
+        if qos_value == 0:
+            profile.reliability = QoSReliabilityPolicy.SYSTEM_DEFAULT
+        elif qos_value == 1:
+            profile.reliability = QoSReliabilityPolicy.BEST_EFFORT
+        else:
+            profile.reliability = QoSReliabilityPolicy.RELIABLE
+        return profile
 
     def global_ref_callback(self, msg: NavSatFix) -> None:
         """Callback to update the global reference system message."""
@@ -357,12 +439,11 @@ class PlaceRecognitionNode(Node):
 
         timestamp = lidar_msg.header.stamp if lidar_msg is not None else self.get_clock().now().to_msg()
         pose_msg = self._create_pose_msg(output["pose"], timestamp)
-        idx_msg = self._create_idx_msg(int(output["idx"]), timestamp)
+        idx_msg  = self._create_idx_msg(int(output["idx"]), timestamp)
         self.pose_pub.publish(pose_msg)
         self.get_logger().info(f"Published pose message: {pose_msg.pose}")
         self.idx_pub.publish(idx_msg)
         self.get_logger().info(f"Published database index message: {idx_msg.index}")
-
 
 def main(args=None):
     """Main entry point for the Place Recognition node."""
@@ -371,7 +452,6 @@ def main(args=None):
     rclpy.spin(pr_node)
     pr_node.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

@@ -11,9 +11,33 @@ def generate_launch_description():
         get_package_share_directory('open_place_recognition'),
         'configs/pipelines'
     )
+    qos_front_camera_arg = DeclareLaunchArgument(
+        'qos_front_camera',
+        default_value='2',
+        description='QoS for front camera (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_back_camera_arg = DeclareLaunchArgument(
+        'qos_back_camera',
+        default_value='2',
+        description='QoS for back camera (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_lidar_arg = DeclareLaunchArgument(
+        'qos_lidar',
+        default_value='2',
+        description='QoS for lidar (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_global_ref_arg = DeclareLaunchArgument(
+        'qos_global_ref',
+        default_value='2',
+        description='QoS for global reference subscription (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
 
     # Declare launch arguments for configurable parameters
     launch_args = [
+        qos_front_camera_arg,
+        qos_back_camera_arg,
+        qos_lidar_arg,
+        qos_global_ref_arg,
         # Topics for images and masks
         DeclareLaunchArgument(
             'image_front_topic',
@@ -97,6 +121,10 @@ def generate_launch_description():
     ]
 
     params = {
+        "qos_front_camera":         LaunchConfiguration("qos_front_camera"),
+        "qos_back_camera":          LaunchConfiguration("qos_back_camera"),
+        "qos_lidar":                LaunchConfiguration("qos_lidar"),
+        "qos_global_ref":           LaunchConfiguration("qos_global_ref"),
         "image_front_topic":        LaunchConfiguration("image_front_topic"),
         "image_back_topic":         LaunchConfiguration("image_back_topic"),
         "mask_front_topic":         LaunchConfiguration("mask_front_topic"),
@@ -114,13 +142,6 @@ def generate_launch_description():
         "reserve":                  LaunchConfiguration("reserve"),
     }
 
-    # If a sensor is disabled, the node code should (with proper checks) skip creating the Subscriber.
-    # For example, if enable_lidar is false, you may have your node check if lidar_topic is empty.
-    # Here we assume that the node code will interpret a disabled sensor if its topic string is empty.
-    # One way to do that is to pass an empty string when the sensor is disabled.
-    # This can be achieved by a remapping or by using a conditional in your node code.
-    # In this launch file we simply pass the value from LaunchConfiguration.
-    
     localization_node = Node(
         package='open_place_recognition',
         executable='localization_node.py',

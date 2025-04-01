@@ -26,6 +26,9 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from ament_index_python.packages import get_package_share_directory
 
+# Import QoS classes for separate QoS handling
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
+
 # Importing required modules from our package
 from opr.pipelines.localization import ArucoLocalizationPipeline
 from opr_interfaces.msg import DatabaseMatchIndex
@@ -56,15 +59,21 @@ class LocalizationNode(Node):
         super().__init__("localization")
         
         # Declare required parameters directly in __init__
+        self.declare_parameter("qos_front_camera", 2, ParameterDescriptor(description="QoS for front camera"))
+        self.declare_parameter("qos_back_camera", 2,  ParameterDescriptor(description="QoS for back camera"))
+        self.declare_parameter("qos_lidar", 2,        ParameterDescriptor(description="QoS for lidar"))
+        self.declare_parameter("qos_global_ref", 2,   ParameterDescriptor(description="QoS for global reference subscription"))
+        # Declare other parameters
         self.declare_parameter("image_front_topic", "", ParameterDescriptor(description="Front camera image topic."))
         self.declare_parameter("image_back_topic",  "", ParameterDescriptor(description="Back camera image topic."))
         self.declare_parameter("mask_front_topic",  "", ParameterDescriptor(description="Front semantic segmentation mask topic."))
         self.declare_parameter("mask_back_topic",   "", ParameterDescriptor(description="Back semantic segmentation mask topic."))
         self.declare_parameter("lidar_topic",       "", ParameterDescriptor(description="Lidar pointcloud topic."))
-        self.declare_parameter("dataset_dir",        "", ParameterDescriptor(description="dataset directory."))
+        self.declare_parameter("dataset_dir",       "", ParameterDescriptor(description="dataset directory."))
         self.declare_parameter("pipeline_cfg",      "", ParameterDescriptor(description="Path to the pipeline configuration file."))
         self.declare_parameter("exclude_dynamic_classes", False, ParameterDescriptor(description="Exclude dynamic objects from the input data."))
         self.declare_parameter("image_resize", rclpy.Parameter.Type.INTEGER_ARRAY, ParameterDescriptor(description="Image resize dimensions."))
+        
         # New parameters for enabling/disabling sensors and global reference.
         self.declare_parameter("enable_front_camera", True, ParameterDescriptor(description="Enable front camera."))
         self.declare_parameter("enable_back_camera",  True, ParameterDescriptor(description="Enable back camera."))
@@ -72,7 +81,13 @@ class LocalizationNode(Node):
         self.declare_parameter("enable_global_ref",   True, ParameterDescriptor(description="Enable global reference system subscription."))
         self.declare_parameter("global_ref_topic",  "", ParameterDescriptor(description="Global reference topic (e.g. GPS/Barometer, WGS84)."))
         
-        # Retrieve parameters from the parameter server.
+        # Retrieve QoS parameter values
+        self.qos_front_camera_value = self.get_parameter("qos_front_camera").get_parameter_value().integer_value
+        self.qos_back_camera_value  = self.get_parameter("qos_back_camera").get_parameter_value().integer_value
+        self.qos_lidar_value        = self.get_parameter("qos_lidar").get_parameter_value().integer_value
+        self.qos_global_ref_value   = self.get_parameter("qos_global_ref").get_parameter_value().integer_value
+        
+        # Retrieve other parameters
         self.image_front_topic      = self.get_parameter("image_front_topic").get_parameter_value().string_value
         self.image_back_topic       = self.get_parameter("image_back_topic").get_parameter_value().string_value
         self.mask_front_topic       = self.get_parameter("mask_front_topic").get_parameter_value().string_value
@@ -92,33 +107,73 @@ class LocalizationNode(Node):
         # Initialize cv_bridge for converting ROS image messages to OpenCV format.
         self.cv_bridge = CvBridge()
 
-        # Build a list of subscribers conditionally based on enabled sensors.
+        # Create QoS profiles
+        self.qos_front_cam_profile  = self._create_qos_profile(self.qos_front_camera_value)
+        self.qos_back_cam_profile   = self._create_qos_profile(self.qos_back_camera_value)
+        self.qos_lidar_profile      = self._create_qos_profile(self.qos_lidar_value)
+        self.qos_global_ref_profile = self._create_qos_profile(self.qos_global_ref_value, depth=10)
+
+        # Build a list of subscribers conditionally based on enabled sensors,
+        # each with its own QoS profile.
         subscribers = []
         mapping = {}  # Will map sensor name to its index in the synchronizer arguments.
+
         if self.enable_front_camera:
-            self.image_front_sub = Subscriber(self, CompressedImage, self.image_front_topic)
+            # Subscriber for front camera image
+            self.image_front_sub = Subscriber(
+                self,
+                CompressedImage,
+                self.image_front_topic,
+                qos_profile=self.qos_front_cam_profile
+            )
             subscribers.append(self.image_front_sub)
             mapping['front_image'] = len(subscribers) - 1
-            self.mask_front_sub = Subscriber(self, Image, self.mask_front_topic)
+
+            # Subscriber for front camera mask
+            self.mask_front_sub = Subscriber(
+                self,
+                Image,
+                self.mask_front_topic,
+                qos_profile=self.qos_front_cam_profile
+            )
             subscribers.append(self.mask_front_sub)
             mapping['front_mask'] = len(subscribers) - 1
         else:
             self.image_front_sub = None
-            self.mask_front_sub = None
+            self.mask_front_sub  = None
 
         if self.enable_back_camera:
-            self.image_back_sub = Subscriber(self, CompressedImage, self.image_back_topic)
+            # Subscriber for back camera image
+            self.image_back_sub = Subscriber(
+                self,
+                CompressedImage,
+                self.image_back_topic,
+                qos_profile=self.qos_back_cam_profile
+            )
             subscribers.append(self.image_back_sub)
             mapping['back_image'] = len(subscribers) - 1
-            self.mask_back_sub = Subscriber(self, Image, self.mask_back_topic)
+
+            # Subscriber for back camera mask
+            self.mask_back_sub = Subscriber(
+                self,
+                Image,
+                self.mask_back_topic,
+                qos_profile=self.qos_back_cam_profile
+            )
             subscribers.append(self.mask_back_sub)
             mapping['back_mask'] = len(subscribers) - 1
         else:
             self.image_back_sub = None
-            self.mask_back_sub = None
+            self.mask_back_sub  = None
 
         if self.enable_lidar:
-            self.lidar_sub = Subscriber(self, PointCloud2, self.lidar_topic)
+            # Subscriber for LiDAR
+            self.lidar_sub = Subscriber(
+                self,
+                PointCloud2,
+                self.lidar_topic,
+                qos_profile=self.qos_lidar_profile
+            )
             subscribers.append(self.lidar_sub)
             mapping['lidar'] = len(subscribers) - 1
         else:
@@ -138,15 +193,20 @@ class LocalizationNode(Node):
         else:
             self.get_logger().error("No sensors enabled; cannot create synchronizer.")
 
-        # Create publishers for pose and database match index.
+        # Create publishers for pose and database match index (use default QoS or 10).
         self.db_match_pose_pub  = self.create_publisher(PoseStamped, "/place_recognition/pose", 10)
         self.idx_pub            = self.create_publisher(DatabaseMatchIndex, "/place_recognition/db_idx", 10)
         self.estimated_pose_pub = self.create_publisher(PoseStamped, "/localization/pose", 10)
 
-        # If enabled, create a subscriber for the global reference system.
+        # If enabled, create a subscriber for the global reference system with its QoS.
         if self.enable_global_ref:
             from sensor_msgs.msg import NavSatFix
-            self.global_ref_sub = self.create_subscription(NavSatFix, self.global_ref_topic, self.global_ref_callback, 10)
+            self.global_ref_sub = self.create_subscription(
+                NavSatFix,
+                self.global_ref_topic,
+                self.global_ref_callback,
+                self.qos_global_ref_profile
+            )
         else:
             self.global_ref_sub = None
         self.global_ref = None
@@ -169,7 +229,7 @@ class LocalizationNode(Node):
         self.get_logger().error(f"model_weights_path does not exist: {model_weights_path}")
         cfg.database_dir = self.dataset_dir
         cfg.model_weights_path = model_weights_path
-
+        # ----------------------------------
 
         self.pipeline = instantiate(cfg)
 
@@ -204,7 +264,7 @@ class LocalizationNode(Node):
             [ 0.01509615, -0.99976457, -0.01558544,  0.04632156],
             [ 0.00871086,  0.01571812, -0.99983852, -0.13278588],
             [ 0.9998481,   0.01495794,  0.0089461,  -0.06092749],
-            [ 0.,          0.,         0.,          1.        ]
+            [ 0.,          0.,          0.,          1.        ]
         ])
         self.lidar2back = np.array([
             [-1.50409674e-02,  9.99886421e-01,  9.55906151e-04,  1.82703304e-02],
@@ -226,6 +286,19 @@ class LocalizationNode(Node):
         self.back_dist = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
 
         self.get_logger().info(f"Initialized {self.__class__.__name__} node.")
+
+    def _create_qos_profile(self, qos_value: int, depth=1) -> QoSProfile:
+        """
+        Create a QoSProfile based on integer (0=SystemDefault,1=BestEffort,2=Reliable).
+        """
+        qos_profile = QoSProfile(depth=depth)
+        if qos_value == 0:
+            qos_profile.reliability = QoSReliabilityPolicy.SYSTEM_DEFAULT
+        elif qos_value == 1:
+            qos_profile.reliability = QoSReliabilityPolicy.BEST_EFFORT
+        else:
+            qos_profile.reliability = QoSReliabilityPolicy.RELIABLE
+        return qos_profile
 
     def global_ref_callback(self, msg) -> None:
         """Callback to update the global reference message."""
@@ -512,7 +585,6 @@ class LocalizationNode(Node):
         self.get_logger().info(f"Published estimated pose message: {estimated_pose_msg.pose}")
         self.idx_pub.publish(idx_msg)
         self.get_logger().info(f"Published database index message: {idx_msg.index}")
-
 
 def main(args=None):
     """Main function to initialize and spin the localization node."""

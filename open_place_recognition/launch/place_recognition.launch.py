@@ -12,8 +12,38 @@ def generate_launch_description():
         'configs/pipelines/place_recognition'
     )
 
-    # Declare launch arguments for configurable parameters
+    # ----------------------------------------------------------------------
+    # New QoS arguments for front camera, back camera, lidar, global ref:
+    # ----------------------------------------------------------------------
+    qos_front_camera_arg = DeclareLaunchArgument(
+        'qos_front_camera',
+        default_value='2',
+        description='QoS for front camera (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_back_camera_arg = DeclareLaunchArgument(
+        'qos_back_camera',
+        default_value='2',
+        description='QoS for back camera (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_lidar_arg = DeclareLaunchArgument(
+        'qos_lidar',
+        default_value='2',
+        description='QoS for lidar (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+    qos_global_ref_arg = DeclareLaunchArgument(
+        'qos_global_ref',
+        default_value='2',
+        description='QoS for global reference subscription (0=SystemDefault,1=BestEffort,2=Reliable)'
+    )
+
+    # ----------------------------------------------------------------------
+    # Declare launch arguments for configurable parameters (original code):
+    # ----------------------------------------------------------------------
     launch_arguments = [
+        qos_front_camera_arg,
+        qos_back_camera_arg,
+        qos_lidar_arg,
+        qos_global_ref_arg,
         DeclareLaunchArgument(
             'image_front_topic',
             default_value='/zed_node/left/image_rect_color/compressed',
@@ -87,22 +117,29 @@ def generate_launch_description():
         )
     ]
 
-    # Use LaunchConfiguration substitutions for all parameters
+    # ----------------------------------------------------------------------
+    # Use LaunchConfiguration substitutions for all parameters (original code):
+    # ----------------------------------------------------------------------
     node_parameters = {
-        "image_front_topic":    LaunchConfiguration("image_front_topic"),
-        "image_back_topic":     LaunchConfiguration("image_back_topic"),
-        "mask_front_topic":     LaunchConfiguration("mask_front_topic"),
-        "mask_back_topic":      LaunchConfiguration("mask_back_topic"),
-        "lidar_topic":          LaunchConfiguration("lidar_topic"),
-        "dataset_dir":          LaunchConfiguration("dataset_dir"),
-        "pipeline_cfg":         LaunchConfiguration("pipeline_cfg"),
-        "image_resize":         LaunchConfiguration("image_resize"),
-        "enable_front_camera":  LaunchConfiguration("enable_front_camera"),
-        "enable_back_camera":   LaunchConfiguration("enable_back_camera"),
-        "enable_lidar":         LaunchConfiguration("enable_lidar"),
-        "enable_global_ref":    LaunchConfiguration("enable_global_ref"),
-        "global_ref_topic":     LaunchConfiguration("global_ref_topic"),
-        "reserve":              LaunchConfiguration("reserve"),
+        "qos_front_camera":  LaunchConfiguration("qos_front_camera"),
+        "qos_back_camera":   LaunchConfiguration("qos_back_camera"),
+        "qos_lidar":         LaunchConfiguration("qos_lidar"),
+        "qos_global_ref":    LaunchConfiguration("qos_global_ref"),
+
+        "image_front_topic": LaunchConfiguration("image_front_topic"),
+        "image_back_topic":  LaunchConfiguration("image_back_topic"),
+        "mask_front_topic":  LaunchConfiguration("mask_front_topic"),
+        "mask_back_topic":   LaunchConfiguration("mask_back_topic"),
+        "lidar_topic":       LaunchConfiguration("lidar_topic"),
+        "dataset_dir":       LaunchConfiguration("dataset_dir"),
+        "pipeline_cfg":      LaunchConfiguration("pipeline_cfg"),
+        "image_resize":      LaunchConfiguration("image_resize"),
+        "enable_front_camera": LaunchConfiguration("enable_front_camera"),
+        "enable_back_camera":  LaunchConfiguration("enable_back_camera"),
+        "enable_lidar":        LaunchConfiguration("enable_lidar"),
+        "enable_global_ref":   LaunchConfiguration("enable_global_ref"),
+        "global_ref_topic":    LaunchConfiguration("global_ref_topic"),
+        "reserve":             LaunchConfiguration("reserve"),
     }
 
     # Create the Node action with parameters from LaunchConfiguration
