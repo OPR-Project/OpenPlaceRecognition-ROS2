@@ -54,8 +54,8 @@ def generate_launch_description():
 
         Node(
             package='open_place_recognition',
-            executable='dataset_train_node.py',
-            name='dataset_train_node',
+            executable='dataset_indexing_node.py',
+            name='dataset_indexing_node',
             output='screen',
             parameters=[{
                 'dataset_path': LaunchConfiguration('dataset_path'),

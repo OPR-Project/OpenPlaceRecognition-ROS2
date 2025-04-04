@@ -17,9 +17,9 @@ from omegaconf import OmegaConf
 
 from opr.datasets.itlp import ITLPCampus
 
-class DatasetTrainNode(Node):
+class DatasetIndexingNode(Node):
     def __init__(self):
-        super().__init__('dataset_train_node')
+        super().__init__('dataset_indexing_node')
         #
         # ---------------------------
         # Declare ROS 2 Parameters
@@ -223,7 +223,7 @@ class DatasetTrainNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = DatasetTrainNode()
+    node = DatasetIndexingNode()
     # Spin once and exit (this node does a one-shot operation)
     rclpy.spin_once(node, timeout_sec=1)
     node.destroy_node()

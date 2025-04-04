@@ -23,7 +23,7 @@ install(PROGRAMS
   src/dataset_from_rosbag_node.py
   src/dataset_from_rtabmap_node.py
   src/dataset_publisher_node.py
-  src/dataset_train_node.py
+  src/dataset_indexing_node.py
   src/localization_node.py
   src/place_recognition_node.py
 #   src/test_depth_estimation_node.py
