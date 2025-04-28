@@ -21,16 +21,19 @@ RUN apt-get install -y software-properties-common && add-apt-repository universe
     curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
-# Install ROS2
+# Install ROS2 and common tools
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+    sudo \
+    wget \
+    git \
     nano \
+    curl \
     ros-humble-desktop \
     ros-dev-tools \
     ros-humble-image-transport-plugins && \
     rosdep init && rosdep update
 
 # Copy local ROS2 packages into the workspace source directory.
-# These folders (open_place_recognition and opr_interfaces) are assumed to be in the repository (build context).
 RUN mkdir -p /ros2_ws/src
 
 # Run additional setup steps from the external OPR folder.
@@ -44,7 +47,9 @@ ENV USER=docker_opr_ros2
 ARG UID=1000
 ARG GID=1000
 ARG PW=user
-RUN useradd -m ${USER} --uid=${UID} && echo "${USER}:${PW}" | chpasswd && adduser ${USER} sudo
+RUN useradd -m ${USER} --uid=${UID} && echo "${USER}:${PW}" | chpasswd && \
+    usermod -aG sudo ${USER} && echo "${USER} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
 WORKDIR /home/${USER}
 
 # Create directories for mounting volumes.
@@ -53,6 +58,7 @@ RUN mkdir OpenPlaceRecognition && chown -R ${UID}:${GID} /home/${USER}
 
 USER ${UID}:${GID}
 
+# Source ROS2 on startup
 RUN echo "source /opt/ros/humble/setup.bash" >> /home/${USER}/.bashrc
 
 # Install pip requirements from the external folder.
