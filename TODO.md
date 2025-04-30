@@ -1,0 +1,5 @@
+- Fix place_recognition node
+- Fix localization node
+- Add gps/barometer for better global localization
+- Test rtabmap and rosbag convertions
+- Add docker supports for aarch64(Jetson based PC)
